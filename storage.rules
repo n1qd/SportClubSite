@@ -1,0 +1,15 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Аватары пользователей: путь avatars/users/{userId}/avatar
+    match /avatars/users/{userId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Аватары тренеров: путь avatars/trainers/{trainerId}/avatar
+    match /avatars/trainers/{trainerId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
