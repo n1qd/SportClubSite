@@ -2,20 +2,20 @@ import { useEffect, useState } from "react";
 import type { GetServerSideProps } from "next";
 import { ClientLayout } from "@/components/layout/ClientLayout";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { requireAuth, type AuthedPageProps } from "@/lib/ssr-auth";
 import {
   getAvailableSubscriptions,
   getUserSubscriptions
 } from "@/lib/db";
 import type { Subscription, UserSubscription } from "@/lib/models";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 type Props = AuthedPageProps;
 
-function formatDate(ts: any) {
+function formatDate(ts: any, locale: string) {
   if (!ts) return "—";
   const date = "toDate" in ts ? ts.toDate() : new Date();
-  return date.toLocaleDateString("ru-RU", {
+  return date.toLocaleDateString(locale, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric"
@@ -30,11 +30,14 @@ function remainingDays(ts: any): number {
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
-function formatPrice(price: number): string {
-  return price.toLocaleString("ru-RU") + " ₽";
+function formatPrice(price: number, locale: string): string {
+  const symbol = locale === "en-US" ? " $" : " ₽";
+  return price.toLocaleString(locale) + symbol;
 }
 
 export default function SubscriptionsPage({ user }: Props) {
+  const { t, language } = useTranslation();
+  const locale = language === "en" ? "en-US" : "ru-RU";
   const [available, setAvailable] = useState<Subscription[]>([]);
   const [mine, setMine] = useState<UserSubscription[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,25 +57,34 @@ export default function SubscriptionsPage({ user }: Props) {
           setMine(m);
         }
       } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? "Ошибка загрузки");
+        if (!cancelled) setError(e?.message ?? t("client.subs.loadFailed"));
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [user.uid]);
+  }, [user.uid, t]);
 
   useEffect(() => {
     if (success) {
-      const t = setTimeout(() => setSuccess(null), 3000);
-      return () => clearTimeout(t);
+      const id = setTimeout(() => setSuccess(null), 3000);
+      return () => clearTimeout(id);
     }
   }, [success]);
 
   const activeMine = mine.filter((s) => s.active && remainingDays(s.endDate) > 0);
 
+  function pluralDays(n: number): string {
+    if (language === "en") {
+      return n === 1 ? t("client.subs.daysOne") : t("client.subs.daysMany");
+    }
+    if (n === 1) return t("client.subs.daysOne");
+    if (n < 5) return t("client.subs.daysFew");
+    return t("client.subs.daysMany");
+  }
+
   return (
-    <ClientLayout title="Абонементы">
+    <ClientLayout title={t("client.subs.title")}>
       <div className="space-y-4">
         {error && (
           <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -86,19 +98,18 @@ export default function SubscriptionsPage({ user }: Props) {
         )}
 
         {loading ? (
-          <Card className="text-xs text-slate-700">Загрузка абонементов...</Card>
+          <Card className="text-xs text-slate-700">{t("client.subs.loading")}</Card>
         ) : (
           <>
-            {/* Мои абонементы */}
             <Card className="space-y-3">
               <h2 className="text-sm font-semibold text-hsc-panel">
                 {activeMine.length > 0
-                  ? `Мои абонементы (${activeMine.length})`
-                  : "У вас нет активных абонементов"}
+                  ? `${t("client.subs.myActive")} (${activeMine.length})`
+                  : t("client.subs.noneTitle")}
               </h2>
               {activeMine.length === 0 && (
                 <p className="text-xs text-slate-700">
-                  Выберите подходящий абонемент ниже.
+                  {t("client.subs.choose")}
                 </p>
               )}
               <div className="space-y-2">
@@ -120,13 +131,13 @@ export default function SubscriptionsPage({ user }: Props) {
                         <div className="rounded-xl bg-white/20 px-3 py-2 text-center">
                           <div className="text-xl font-black">{days}</div>
                           <div className="text-[10px]">
-                            {days === 1 ? "день" : days < 5 ? "дня" : "дней"}
+                            {pluralDays(days)}
                           </div>
                         </div>
                       </div>
                       <div className="mt-2 flex justify-between border-t border-white/20 pt-2 text-[10px] text-emerald-100">
-                        <span>С {formatDate(s.startDate)}</span>
-                        <span>До {formatDate(s.endDate)}</span>
+                        <span>{t("client.subs.fromDate")} {formatDate(s.startDate, locale)}</span>
+                        <span>{t("client.subs.untilDate")} {formatDate(s.endDate, locale)}</span>
                       </div>
                     </div>
                   );
@@ -134,13 +145,12 @@ export default function SubscriptionsPage({ user }: Props) {
               </div>
             </Card>
 
-            {/* Доступные абонементы */}
             <Card className="space-y-3">
               <h2 className="text-sm font-semibold text-hsc-panel">
-                Доступные абонементы
+                {t("client.subs.available")}
               </h2>
               <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                Добавить абонемент клиенту может только администратор. Обратитесь в клуб для оформления.
+                {t("client.subs.adminHint")}
               </p>
               <div className="space-y-3">
                 {available.map((sub) => (
@@ -158,13 +168,13 @@ export default function SubscriptionsPage({ user }: Props) {
                             {sub.name}
                           </div>
                           <div className="text-[11px] text-slate-500">
-                            {sub.durationDays} дней
+                            {sub.durationDays} {pluralDays(sub.durationDays)}
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="text-sm font-black text-hsc-panel">
-                          {formatPrice(sub.price)}
+                          {formatPrice(sub.price, locale)}
                         </div>
                       </div>
                     </div>

@@ -127,12 +127,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     const db = getFirestoreDb();
     await setDoc(doc(db, "users", cred.user.uid), {
-      email, role: "CLIENT", createdAt: Timestamp.now(),
-      lastName: profile?.lastName ?? "", firstName: profile?.firstName ?? "",
-      middleName: profile?.middleName ?? "", birthDate: profile?.birthDate ?? "",
-      gender: profile?.gender ?? "MALE", height: profile?.height ?? 0,
-      weight: profile?.weight ?? 0, fitnessGoal: profile?.fitnessGoal ?? "MAINTENANCE",
-      phone: ""
+      id: cred.user.uid,
+      email,
+      role: "CLIENT",
+      createdAt: Timestamp.now(),
+      lastName: profile?.lastName ?? "",
+      firstName: profile?.firstName ?? "",
+      middleName: profile?.middleName ?? "",
+      birthDate: profile?.birthDate ?? "",
+      gender: profile?.gender ?? "MALE",
+      height: profile?.height ?? 0,
+      weight: profile?.weight ?? 0,
+      fitnessGoal: profile?.fitnessGoal ?? "MAINTENANCE",
+      phone: "",
+      photoUrl: ""
     });
     await updateServerSession(cred.user, "CLIENT");
     setRole("CLIENT");

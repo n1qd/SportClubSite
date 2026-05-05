@@ -15,29 +15,30 @@ import {
 } from "@/lib/db";
 import type { Chat, ChatMessage } from "@/lib/models";
 import { Avatar } from "@/components/ui/Avatar";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 type Props = AuthedPageProps;
 
-function formatTime(ts: any): string {
+function formatTime(ts: any, locale: string): string {
   if (!ts) return "";
   const date = "toDate" in ts ? ts.toDate() : new Date();
-  return date.toLocaleString("ru-RU", {
+  return date.toLocaleString(locale, {
     hour: "2-digit",
     minute: "2-digit",
   });
 }
 
-function formatDate(ts: any): string {
+function formatDate(ts: any, locale: string): string {
   if (!ts) return "";
   const date = "toDate" in ts ? ts.toDate() : new Date();
-  return date.toLocaleDateString("ru-RU", {
+  return date.toLocaleDateString(locale, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
   });
 }
 
-function formatLastMessageTime(ts: any): string {
+function formatLastMessageTime(ts: any, locale: string): string {
   if (!ts) return "";
   const date = "toDate" in ts ? ts.toDate() : new Date();
   const now = new Date();
@@ -46,34 +47,24 @@ function formatLastMessageTime(ts: any): string {
     date.getMonth() === now.getMonth() &&
     date.getFullYear() === now.getFullYear();
   if (isToday) {
-    return date.toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    return date.toLocaleString(locale, { hour: "2-digit", minute: "2-digit" });
   }
-  return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+  return date.toLocaleDateString(locale, { day: "2-digit", month: "2-digit" });
 }
 
-/** Get the other participant's id from the chat. */
 function getOtherId(chat: Chat, myUid: string): string | null {
   const other = (chat.participantIds ?? []).find((id) => id !== myUid);
   return other ?? null;
 }
 
-/** Get the other participant's name from the chat. */
-function getOtherName(chat: Chat, myUid: string): string {
-  if (!chat.participantNames) return "Собеседник";
+function getOtherName(chat: Chat, myUid: string, fallback: string): string {
+  if (!chat.participantNames) return fallback;
   for (const [uid, name] of Object.entries(chat.participantNames)) {
     if (uid !== myUid) return name;
   }
-  return "Собеседник";
+  return fallback;
 }
 
-/** Get initials from a name string. */
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return (name[0] ?? "?").toUpperCase();
-}
-
-/** Check if two timestamps belong to different days. */
 function isDifferentDay(ts1: any, ts2: any): boolean {
   if (!ts1 || !ts2) return true;
   const d1 = "toDate" in ts1 ? ts1.toDate() : new Date();
@@ -86,26 +77,25 @@ function isDifferentDay(ts1: any, ts2: any): boolean {
 }
 
 export default function MessagesPage({ user }: Props) {
+  const { t, language } = useTranslation();
+  const locale = language === "en" ? "en-US" : "ru-RU";
+
   const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
 
-  // UI state
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // For mobile: when a chat is selected, show messages panel
   const [mobileShowChat, setMobileShowChat] = useState(false);
-  // Photo URLs for other participants (chatId -> photoUrl)
   const [otherPhotos, setOtherPhotos] = useState<Record<string, string>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load chats and photos of other participants
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -124,7 +114,6 @@ export default function MessagesPage({ user }: Props) {
           sorted.map(async (chat) => {
             const otherId = getOtherId(chat, user.uid);
             if (!otherId) return;
-            // Сначала тренер: клиент может читать trainers, но не users другого пользователя
             const trainer = await getTrainerByUserId(otherId);
             if (cancelled) return;
             let url = trainer?.photoUrl;
@@ -133,7 +122,7 @@ export default function MessagesPage({ user }: Props) {
                 const otherUser = await getCurrentUser(otherId);
                 if (!cancelled) url = otherUser?.photoUrl;
               } catch {
-                // Клиент не может читать users тренера — используем только trainer
+                /* ignore */
               }
             }
             if (url) photos[chat.id] = url;
@@ -141,7 +130,7 @@ export default function MessagesPage({ user }: Props) {
         );
         if (!cancelled) setOtherPhotos((prev) => ({ ...prev, ...photos }));
       } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? "Не удалось загрузить чаты");
+        if (!cancelled) setError(e?.message ?? t("client.messages.loadFailed"));
       } finally {
         if (!cancelled) setLoadingChats(false);
       }
@@ -149,9 +138,8 @@ export default function MessagesPage({ user }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user.uid]);
+  }, [user.uid, t]);
 
-  // Subscribe to messages for selected chat
   useEffect(() => {
     if (!selectedChatId) {
       setMessages([]);
@@ -161,7 +149,6 @@ export default function MessagesPage({ user }: Props) {
     setLoadingMessages(true);
     setError(null);
 
-    // Load initial messages, then subscribe
     let unsubscribe: (() => void) | null = null;
 
     (async () => {
@@ -170,7 +157,6 @@ export default function MessagesPage({ user }: Props) {
         setMessages(initial);
         setLoadingMessages(false);
 
-        // Real-time subscription
         unsubscribe = subscribeChatMessages(selectedChatId, (msgs) => {
           setMessages(msgs);
         });
@@ -184,12 +170,10 @@ export default function MessagesPage({ user }: Props) {
     };
   }, [selectedChatId]);
 
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Send message
   async function handleSend() {
     if (!inputText.trim() || !selectedChatId || sending) return;
 
@@ -198,13 +182,11 @@ export default function MessagesPage({ user }: Props) {
     setSending(true);
 
     try {
-      // Determine sender name
       const selectedChat = chats.find((c) => c.id === selectedChatId);
-      const senderName = selectedChat?.participantNames?.[user.uid] ?? user.email ?? "Я";
+      const senderName = selectedChat?.participantNames?.[user.uid] ?? user.email ?? t("client.messages.peer");
 
       await sendChatMessage(selectedChatId, user.uid, senderName, text);
 
-      // Refresh chats to update last message
       const updatedChats = await getChatsForUser(user.uid);
       setChats(
         updatedChats.sort((a, b) => {
@@ -214,8 +196,8 @@ export default function MessagesPage({ user }: Props) {
         })
       );
     } catch (e: any) {
-      setError(e?.message ?? "Не удалось отправить сообщение");
-      setInputText(text); // restore text on error
+      setError(e?.message ?? t("client.messages.loadFailed"));
+      setInputText(text);
     } finally {
       setSending(false);
       inputRef.current?.focus();
@@ -243,13 +225,12 @@ export default function MessagesPage({ user }: Props) {
   const selectedChat = chats.find((c) => c.id === selectedChatId);
 
   return (
-    <ClientLayout title="Сообщения">
-      <div className="space-y-4">
-        {/* Header */}
+    <ClientLayout title={t("client.messages.title")}>
+      <div className="flex h-full flex-col gap-4 overflow-hidden">
         <Card className="space-y-1">
-          <h2 className="text-sm font-semibold text-hsc-panel">Сообщения</h2>
+          <h2 className="text-sm font-semibold text-hsc-panel">{t("client.messages.title")}</h2>
           <p className="text-xs text-slate-700">
-            Общайтесь с тренерами по вопросам индивидуальных тренировок.
+            {t("client.messages.intro")}
           </p>
         </Card>
 
@@ -260,34 +241,31 @@ export default function MessagesPage({ user }: Props) {
         )}
 
         {loadingChats ? (
-          <Card className="text-xs text-slate-700">Загрузка чатов...</Card>
+          <Card className="text-xs text-slate-700">{t("client.messages.loading")}</Card>
         ) : chats.length === 0 ? (
           <Card className="text-center space-y-2">
             <div className="text-3xl">💬</div>
             <p className="text-xs text-slate-700">
-              У вас пока нет чатов. Чат создаётся автоматически при записи на
-              индивидуальную тренировку.
+              {t("client.messages.empty")}
             </p>
             <Button size="sm" variant="secondary" href="/client/booking">
-              Записаться на тренировку
+              {t("client.messages.bookCta")}
             </Button>
           </Card>
         ) : (
-          /* =========== CHAT LAYOUT =========== */
-          <div className="flex gap-3 min-h-[460px]">
-            {/* LEFT PANEL: Chat list */}
+          <div className="flex flex-1 min-h-0 gap-3">
             <div
               className={`w-full md:w-1/3 flex-shrink-0 ${
                 mobileShowChat ? "hidden md:block" : "block"
               }`}
             >
-              <Card className="h-full space-y-1 p-3">
+              <Card className="h-full flex min-h-0 flex-col space-y-1 p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 px-1">
-                  Чаты ({chats.length})
+                  {t("client.messages.chats")} ({chats.length})
                 </p>
-                <div className="space-y-0.5 max-h-[400px] overflow-y-auto">
+                <div className="flex-1 space-y-0.5 overflow-y-auto">
                   {chats.map((chat) => {
-                    const otherName = getOtherName(chat, user.uid);
+                    const otherName = getOtherName(chat, user.uid, t("client.messages.peer"));
                     const isActive = chat.id === selectedChatId;
                     return (
                       <button
@@ -322,7 +300,7 @@ export default function MessagesPage({ user }: Props) {
                                     isActive ? "text-emerald-100" : "text-slate-400"
                                   }`}
                                 >
-                                  {formatLastMessageTime(chat.lastMessageAt)}
+                                  {formatLastMessageTime(chat.lastMessageAt, locale)}
                                 </span>
                               )}
                             </div>
@@ -344,7 +322,6 @@ export default function MessagesPage({ user }: Props) {
               </Card>
             </div>
 
-            {/* RIGHT PANEL: Messages */}
             <div
               className={`flex-1 min-w-0 ${
                 !mobileShowChat ? "hidden md:flex" : "flex"
@@ -355,15 +332,13 @@ export default function MessagesPage({ user }: Props) {
                   <div className="text-center space-y-2">
                     <div className="text-3xl">👈</div>
                     <p className="text-xs text-slate-500">
-                      Выберите чат слева, чтобы начать общение
+                      {t("client.messages.selectChat")}
                     </p>
                   </div>
                 </Card>
               ) : (
                 <Card className="flex-1 flex flex-col p-0 overflow-hidden">
-                  {/* Chat header */}
                   <div className="flex items-center gap-2 border-b border-emerald-900/10 px-4 py-3">
-                    {/* Mobile back button */}
                     <button
                       onClick={goBackToList}
                       className="md:hidden rounded-lg p-1 text-slate-500 hover:bg-emerald-50 hover:text-hsc-panel transition-colors"
@@ -372,33 +347,32 @@ export default function MessagesPage({ user }: Props) {
                     </button>
                     <Avatar
                       photoUrl={selectedChat ? otherPhotos[selectedChat.id] : undefined}
-                      name={selectedChat ? getOtherName(selectedChat, user.uid) : undefined}
+                      name={selectedChat ? getOtherName(selectedChat, user.uid, t("client.messages.peer")) : undefined}
                       size="sm"
                     />
                     <div>
                       <div className="text-sm font-semibold text-hsc-panel">
                         {selectedChat
-                          ? getOtherName(selectedChat, user.uid)
-                          : "Чат"}
+                          ? getOtherName(selectedChat, user.uid, t("client.messages.peer"))
+                          : t("client.messages.peer")}
                       </div>
                       <div className="text-[10px] text-slate-500">
-                        Индивидуальная тренировка
+                        {t("client.messages.individual")}
                       </div>
                     </div>
                   </div>
 
-                  {/* Messages area */}
                   <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
                     {loadingMessages ? (
                       <div className="flex items-center justify-center h-full">
                         <p className="text-xs text-slate-500">
-                          Загрузка сообщений...
+                          {t("client.messages.loadingMsgs")}
                         </p>
                       </div>
                     ) : messages.length === 0 ? (
                       <div className="flex items-center justify-center h-full">
                         <p className="text-xs text-slate-500">
-                          Сообщений пока нет. Начните диалог!
+                          {t("client.messages.startChat")}
                         </p>
                       </div>
                     ) : (
@@ -408,8 +382,8 @@ export default function MessagesPage({ user }: Props) {
                           const showDateSep =
                             idx === 0 ||
                             isDifferentDay(
-                              messages[idx - 1]?.createdAt,
-                              msg.createdAt
+                              messages[idx - 1]?.timestamp,
+                              msg.timestamp
                             );
 
                           return (
@@ -417,7 +391,7 @@ export default function MessagesPage({ user }: Props) {
                               {showDateSep && (
                                 <div className="flex justify-center my-2">
                                   <span className="rounded-full bg-slate-100 px-3 py-0.5 text-[10px] text-slate-500">
-                                    {formatDate(msg.createdAt)}
+                                    {formatDate(msg.timestamp, locale)}
                                   </span>
                                 </div>
                               )}
@@ -446,7 +420,7 @@ export default function MessagesPage({ user }: Props) {
                                       isOwn ? "text-emerald-200" : "text-slate-400"
                                     }`}
                                   >
-                                    {formatTime(msg.createdAt)}
+                                    {formatTime(msg.timestamp, locale)}
                                   </div>
                                 </div>
                               </div>
@@ -458,7 +432,6 @@ export default function MessagesPage({ user }: Props) {
                     )}
                   </div>
 
-                  {/* Input area */}
                   <div className="border-t border-emerald-900/10 px-3 py-2">
                     <div className="flex items-center gap-2">
                       <div className="flex-1">
@@ -467,7 +440,7 @@ export default function MessagesPage({ user }: Props) {
                           value={inputText}
                           onChange={(e) => setInputText(e.target.value)}
                           onKeyDown={handleKeyDown}
-                          placeholder="Введите сообщение..."
+                          placeholder={t("client.messages.placeholder")}
                           disabled={sending}
                         />
                       </div>
@@ -477,7 +450,7 @@ export default function MessagesPage({ user }: Props) {
                         onClick={handleSend}
                         className="flex-shrink-0"
                       >
-                        {sending ? "..." : "Отправить"}
+                        {sending ? t("client.messages.sending") : t("client.messages.send")}
                       </Button>
                     </div>
                   </div>

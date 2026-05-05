@@ -35,3 +35,29 @@ export async function changeOwnPassword(
   await reauthenticateWithCredential(fbUser, credential);
   await updatePassword(fbUser, newPassword);
 }
+
+/**
+ * Смена пароля другого пользователя (только администратор/руководитель).
+ * Использует серверный эндпоинт с проверкой роли в Firestore.
+ */
+export async function adminChangeUserPassword(
+  targetUserId: string,
+  newPassword: string
+): Promise<void> {
+  if (!targetUserId) throw new Error("Не указан пользователь.");
+  if (newPassword.length < 6) throw new Error("Пароль не менее 6 символов.");
+  const csrf = getCsrfToken();
+  const res = await fetch("/api/auth/update-password", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrf,
+    },
+    body: JSON.stringify({ targetUserId, newPassword }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.error ?? "Не удалось сменить пароль клиента.");
+  }
+}

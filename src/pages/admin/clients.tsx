@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Avatar } from "@/components/ui/Avatar";
 import { requireAuth, type AuthedPageProps } from "@/lib/ssr-auth";
 import { getAllUsers, updateUserData, deleteUser, getAllSubscriptions, purchaseSubscription, addRevenue } from "@/lib/db";
+import { adminChangeUserPassword } from "@/lib/auth-client";
 import type { User, UserRole } from "@/lib/models";
 import type { Subscription } from "@/lib/models";
 import { Timestamp } from "firebase/firestore";
@@ -40,6 +41,12 @@ export default function AdminClients(_props: Props) {
   const [addSubToUser, setAddSubToUser] = useState<User | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [addingSubId, setAddingSubId] = useState<string | null>(null);
+  const [pwUser, setPwUser] = useState<User | null>(null);
+  const [pwValue, setPwValue] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState(false);
+  const [pwSaving, setPwSaving] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -219,6 +226,19 @@ export default function AdminClients(_props: Props) {
                     {canEditUser(u.role) ? (
                       <>
                         <Button size="sm" variant="ghost" onClick={() => setEditing({ ...u })}>Изменить</Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setPwUser(u);
+                            setPwValue("");
+                            setPwConfirm("");
+                            setPwError(null);
+                            setPwSuccess(false);
+                          }}
+                        >
+                          Пароль
+                        </Button>
                         <Button size="sm" variant="ghost" onClick={() => handleDelete(u.id)}>Удалить</Button>
                       </>
                     ) : (
@@ -340,6 +360,67 @@ export default function AdminClients(_props: Props) {
               <div className="flex justify-end pt-2">
                 <Button size="sm" variant="ghost" onClick={() => { setAddSubToUser(null); setError(null); }}>
                   Закрыть
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Модалка: смена пароля клиента */}
+        {pwUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto space-y-3">
+              <h3 className="text-sm font-bold text-hsc-panel">
+                Сменить пароль: {[pwUser.lastName, pwUser.firstName].filter(Boolean).join(" ") || pwUser.email}
+              </h3>
+              <p className="text-[11px] text-slate-600">
+                Внимание: пароль будет немедленно изменён в Firebase Auth. Сообщите его пользователю безопасным способом.
+              </p>
+              <div>
+                <label className="text-[10px] text-slate-600">Новый пароль</label>
+                <Input
+                  type="password"
+                  value={pwValue}
+                  onChange={(e) => { setPwValue(e.target.value); setPwError(null); }}
+                  placeholder="не менее 6 символов"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-600">Подтверждение</label>
+                <Input
+                  type="password"
+                  value={pwConfirm}
+                  onChange={(e) => { setPwConfirm(e.target.value); setPwError(null); }}
+                  placeholder="повторите пароль"
+                />
+              </div>
+              {pwError && <div className="text-[11px] text-red-600">{pwError}</div>}
+              {pwSuccess && <div className="text-[11px] text-emerald-600">Пароль успешно изменён.</div>}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button size="sm" variant="ghost" onClick={() => { setPwUser(null); setPwError(null); setPwSuccess(false); }}>
+                  Закрыть
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={pwSaving || pwValue.length < 6 || pwValue !== pwConfirm}
+                  onClick={async () => {
+                    if (!pwUser) return;
+                    setPwSaving(true);
+                    setPwError(null);
+                    setPwSuccess(false);
+                    try {
+                      await adminChangeUserPassword(pwUser.id, pwValue);
+                      setPwSuccess(true);
+                      setPwValue("");
+                      setPwConfirm("");
+                    } catch (e: unknown) {
+                      setPwError(e instanceof Error ? e.message : "Не удалось сменить пароль.");
+                    } finally {
+                      setPwSaving(false);
+                    }
+                  }}
+                >
+                  {pwSaving ? "Сохранение..." : "Сменить пароль"}
                 </Button>
               </div>
             </Card>

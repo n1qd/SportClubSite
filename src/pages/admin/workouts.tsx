@@ -5,8 +5,8 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { requireAuth, type AuthedPageProps } from "@/lib/ssr-auth";
-import { getAllGroupWorkouts, addGroupWorkout, deleteGroupWorkout, getAllTrainers, getAllUsers } from "@/lib/db";
-import type { GroupWorkout, Trainer, User } from "@/lib/models";
+import { getAllGroupWorkouts, addGroupWorkout, deleteGroupWorkout, getAllTrainers, getAllUsers, getTrainerAvailability, getTrainerAllWorkouts } from "@/lib/db";
+import type { GroupWorkout, Trainer, User, TrainerAvailability } from "@/lib/models";
 import { Timestamp } from "firebase/firestore";
 
 type Props = AuthedPageProps;
@@ -54,6 +54,12 @@ export default function AdminWorkouts(_props: Props) {
   const [repeatWeekly, setRepeatWeekly] = useState(false);
   const [weeksCount, setWeeksCount] = useState(4);
 
+  // Trainer schedule preview (in workout form)
+  const [trainerAvailability, setTrainerAvailability] = useState<TrainerAvailability[]>([]);
+  const [trainerWorkouts, setTrainerWorkouts] = useState<GroupWorkout[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [showTrainerSchedule, setShowTrainerSchedule] = useState(false);
+
   async function load() {
     setLoading(true);
     try {
@@ -66,6 +72,33 @@ export default function AdminWorkouts(_props: Props) {
   }
 
   useEffect(() => { load(); }, []);
+
+  // Подгрузка расписания тренера для предпросмотра в форме
+  useEffect(() => {
+    if (!showForm || !selectedTrainerId) {
+      setTrainerAvailability([]);
+      setTrainerWorkouts([]);
+      return;
+    }
+    const trainer = trainers.find((t) => t.id === selectedTrainerId);
+    const ids = [trainer?.userId, trainer?.id].filter(Boolean) as string[];
+    if (ids.length === 0) return;
+    setScheduleLoading(true);
+    Promise.all([
+      getTrainerAvailability(trainer?.userId || trainer?.id || ""),
+      getTrainerAllWorkouts(ids),
+    ])
+      .then(([slots, ws]) => {
+        const today = new Date().toISOString().substring(0, 10);
+        setTrainerAvailability(slots.filter((s) => s.date >= today));
+        setTrainerWorkouts(ws.filter((w) => w.dateTime.toMillis() >= Date.now()));
+      })
+      .catch(() => {
+        setTrainerAvailability([]);
+        setTrainerWorkouts([]);
+      })
+      .finally(() => setScheduleLoading(false));
+  }, [showForm, selectedTrainerId, trainers]);
 
   const weekDates = useMemo(() => getWeekDates(), []);
 
@@ -256,6 +289,57 @@ export default function AdminWorkouts(_props: Props) {
                     <option key={t.id} value={t.id}>{[t.lastName, t.firstName].join(" ")}</option>
                   ))}
                 </select>
+                {selectedTrainerId && (
+                  <button
+                    type="button"
+                    onClick={() => setShowTrainerSchedule((v) => !v)}
+                    className="mt-1 text-[10px] font-medium text-emerald-700 underline"
+                  >
+                    {showTrainerSchedule ? "Скрыть расписание" : "Показать расписание тренера"}
+                  </button>
+                )}
+                {showTrainerSchedule && selectedTrainerId && (
+                  <div className="mt-2 rounded-xl border border-emerald-900/10 bg-emerald-50 p-2 text-[11px] text-slate-700 max-h-[180px] overflow-y-auto space-y-2">
+                    {scheduleLoading ? (
+                      <div className="text-slate-500">Загрузка расписания...</div>
+                    ) : (
+                      <>
+                        <div>
+                          <div className="font-semibold text-hsc-panel">Доступные слоты</div>
+                          {trainerAvailability.length === 0 ? (
+                            <div className="text-slate-500">Тренер не указал слоты доступности.</div>
+                          ) : (
+                            <ul className="space-y-0.5">
+                              {trainerAvailability.slice(0, 14).map((s) => (
+                                <li key={s.id}>
+                                  {new Date(s.date).toLocaleDateString("ru-RU", { weekday: "short", day: "2-digit", month: "2-digit" })} — {s.startTime}–{s.endTime}
+                                  {s.notes ? ` (${s.notes})` : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-hsc-panel">Уже забронировано</div>
+                          {trainerWorkouts.length === 0 ? (
+                            <div className="text-slate-500">Свободно.</div>
+                          ) : (
+                            <ul className="space-y-0.5">
+                              {trainerWorkouts
+                                .sort((a, b) => a.dateTime.toMillis() - b.dateTime.toMillis())
+                                .slice(0, 14)
+                                .map((w) => (
+                                  <li key={w.id}>
+                                    {formatDateTime(w.dateTime)} — {w.isIndividual ? `Инд. (${w.clientName || "клиент"})` : w.name}
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               {isIndividual && (

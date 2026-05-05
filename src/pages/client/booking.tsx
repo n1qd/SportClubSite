@@ -14,6 +14,8 @@ import {
   getTrainingRequests,
   getCurrentUser,
 } from "@/lib/db";
+import { getFirebaseAuth } from "@/lib/firebase/client";
+import { onAuthStateChanged } from "firebase/auth";
 import type {
   Trainer,
   TrainerAvailability,
@@ -21,38 +23,33 @@ import type {
   GroupWorkout,
 } from "@/lib/models";
 import { Timestamp } from "firebase/firestore";
+import { useTranslation } from "@/contexts/LanguageContext";
+import type { TranslationKeys } from "@/lib/i18n/translations";
 
 type Props = AuthedPageProps;
 
 type Step = "SELECT_TRAINER" | "VIEW_AVAILABILITY" | "PICK_TIME" | "MY_REQUESTS";
 
-const DAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-
-const SPEC_LABELS: Record<string, string> = {
-  FITNESS: "Фитнес",
-  BODYBUILDING: "Бодибилдинг",
-  CROSSFIT: "Кроссфит",
-  YOGA: "Йога",
-  PILATES: "Пилатес",
-  BOXING: "Бокс",
-  SWIMMING: "Плавание",
-  CARDIO: "Кардио",
+const SPEC_KEYS: Record<string, TranslationKeys> = {
+  FITNESS: "client.profile.specFitness",
+  BODYBUILDING: "client.profile.specBodybuilding",
+  CROSSFIT: "client.profile.specCrossfit",
+  YOGA: "client.profile.specYoga",
+  PILATES: "client.profile.specPilates",
+  BOXING: "client.profile.specBoxing",
+  SWIMMING: "client.profile.specSwimming",
+  CARDIO: "client.profile.specCardio",
 };
 
-const STATUS_LABELS: Record<string, { text: string; cls: string }> = {
-  pending: { text: "Ожидает", cls: "bg-amber-100 text-amber-800" },
-  approved: { text: "Одобрено", cls: "bg-emerald-100 text-emerald-800" },
-  rejected: { text: "Отклонено", cls: "bg-red-100 text-red-700" },
-};
-
-function formatPrice(price: number): string {
-  return price.toLocaleString("ru-RU") + " ₽";
+function formatPrice(price: number, locale: string): string {
+  const symbol = locale === "en-US" ? " $" : " ₽";
+  return price.toLocaleString(locale) + symbol;
 }
 
-function formatDateTime(ts: any): string {
+function formatDateTime(ts: any, locale: string): string {
   if (!ts) return "—";
   const date = "toDate" in ts ? ts.toDate() : new Date();
-  return date.toLocaleString("ru-RU", {
+  return date.toLocaleString(locale, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -61,62 +58,60 @@ function formatDateTime(ts: any): string {
   });
 }
 
-/** Returns the next occurrence of `dayOfWeek` (0=Mon..6=Sun) starting from today. */
-function getNextDateForDay(dayOfWeek: number): Date {
-  const now = new Date();
-  // JS getDay(): 0=Sun,1=Mon...6=Sat → convert to our 0=Mon...6=Sun
-  const jsDay = now.getDay();
-  const currentDay = jsDay === 0 ? 6 : jsDay - 1; // now 0=Mon...6=Sun
-  let diff = dayOfWeek - currentDay;
-  if (diff <= 0) diff += 7;
-  const target = new Date(now);
-  target.setDate(target.getDate() + diff);
-  target.setHours(0, 0, 0, 0);
-  return target;
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatDateLabel(date: string, locale: string): string {
+  const [y, m, d] = date.split("-");
+  if (!y || !m || !d) return date;
+  const dt = new Date(Number(y), Number(m) - 1, Number(d));
+  return dt.toLocaleDateString(locale, { weekday: "short", day: "2-digit", month: "long" });
 }
 
 export default function BookingPage({ user }: Props) {
   const router = useRouter();
+  const { t, language } = useTranslation();
+  const locale = language === "en" ? "en-US" : "ru-RU";
   const [step, setStep] = useState<Step>("SELECT_TRAINER");
 
-  // Data
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [selectedTrainer, setSelectedTrainer] = useState<Trainer | null>(null);
   const [availability, setAvailability] = useState<TrainerAvailability[]>([]);
   const [trainerBookedWorkouts, setTrainerBookedWorkouts] = useState<GroupWorkout[]>([]);
   const [myRequests, setMyRequests] = useState<TrainingRequest[]>([]);
   const [clientName, setClientName] = useState("");
+  const [authReady, setAuthReady] = useState(false);
 
-  // Booking form: выбор из ближайших 7 дней и часа
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const duration = 60;
 
-  const next7Days = useMemo(() => {
-    const days: Date[] = [];
-    const now = new Date();
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(now);
-      d.setDate(now.getDate() + i);
-      d.setHours(0, 0, 0, 0);
-      days.push(d);
-    }
-    return days;
-  }, []);
-
-  // UI state
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Открыть вкладку «Мои заявки» по ссылке /client/booking?step=requests
+  // Дожидаемся, пока Firebase JS SDK подхватит сессию из IndexedDB —
+  // иначе addDoc с правилом `clientId == auth.uid` может вернуть permission denied.
+  useEffect(() => {
+    const auth = getFirebaseAuth();
+    if (auth.currentUser) {
+      setAuthReady(true);
+      return;
+    }
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) setAuthReady(true);
+    });
+    return () => unsub();
+  }, []);
+
   useEffect(() => {
     if (router.query.step === "requests") setStep("MY_REQUESTS");
   }, [router.query.step]);
 
-  // Список тренеров — только из коллекции trainers (клиент не имеет доступа к users)
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -129,7 +124,7 @@ export default function BookingPage({ user }: Props) {
           getCurrentUser(user.uid),
         ]);
         if (!cancelled) {
-          setTrainers(profilesList.filter((t) => t.userId));
+          setTrainers(profilesList.filter((tr) => tr.userId));
           setMyRequests(requests);
           if (currentUser) {
             setClientName(
@@ -140,7 +135,7 @@ export default function BookingPage({ user }: Props) {
           }
         }
       } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? "Не удалось загрузить данные");
+        if (!cancelled) setError(e?.message ?? t("client.booking.loadFailed"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -148,33 +143,32 @@ export default function BookingPage({ user }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user.uid, user.email]);
+  }, [user.uid, user.email, t]);
 
-  // Clear success after 4s
   useEffect(() => {
     if (success) {
-      const t = setTimeout(() => setSuccess(null), 4000);
-      return () => clearTimeout(t);
+      const id = setTimeout(() => setSuccess(null), 4000);
+      return () => clearTimeout(id);
     }
   }, [success]);
 
-  // Load availability and booked slots when trainer selected
   async function handleSelectTrainer(trainer: Trainer) {
     setSelectedTrainer(trainer);
     setAvailability([]);
     setTrainerBookedWorkouts([]);
-    setSelectedDate(null);
+    setSelectedSlotId(null);
     setSelectedHour(null);
     setError(null);
     setStep("VIEW_AVAILABILITY");
     const trainerUid = (trainer.userId || trainer.id || "").trim();
     if (!trainerUid) {
-      setError("Не удалось определить тренера");
+      setError(t("client.booking.loadFailed"));
       return;
     }
     try {
       const avail = await getTrainerAvailability(trainerUid);
-      setAvailability(avail);
+      const today = todayISO();
+      setAvailability(avail.filter((s) => s.date >= today && s.isAvailable));
       let booked: GroupWorkout[] = [];
       try {
         booked = await getTrainerIndividualWorkouts([trainer.userId, trainer.id].filter(Boolean) as string[]);
@@ -183,18 +177,56 @@ export default function BookingPage({ user }: Props) {
       }
       setTrainerBookedWorkouts(booked);
     } catch {
-      setError("Не удалось загрузить расписание тренера");
+      setError(t("client.booking.loadFailed"));
     }
   }
 
-  // Submit booking request
+  function getHoursForSlot(slot: TrainerAvailability): number[] {
+    const startH = parseInt(slot.startTime.split(":")[0] ?? "9", 10);
+    const endH = parseInt(slot.endTime.split(":")[0] ?? "18", 10);
+    const bookedHours = new Set<number>();
+    trainerBookedWorkouts.forEach((w) => {
+      const dt = w.dateTime.toDate();
+      const dateStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+      if (dateStr === slot.date) bookedHours.add(dt.getHours());
+    });
+    const result: number[] = [];
+    for (let h = startH; h < endH; h++) {
+      if (!bookedHours.has(h)) result.push(h);
+    }
+    return result;
+  }
+
+  const selectedSlot = useMemo(
+    () => availability.find((s) => s.id === selectedSlotId) ?? null,
+    [availability, selectedSlotId]
+  );
+
+  function backToAvailability() {
+    setSelectedHour(null);
+    setStep("VIEW_AVAILABILITY");
+  }
+
   async function handleSubmit() {
-    if (!selectedTrainer || !selectedDate || selectedHour === null) return;
+    if (!selectedTrainer || !selectedSlot || selectedHour === null) return;
+
+    if (!authReady) {
+      setError(t("client.booking.loadFailed"));
+      return;
+    }
+
+    const auth = getFirebaseAuth();
+    const fbUid = auth.currentUser?.uid;
+    if (!fbUid || fbUid !== user.uid) {
+      setError(t("client.booking.loadFailed"));
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
     try {
-      const targetDate = new Date(selectedDate);
+      const [y, m, d] = selectedSlot.date.split("-").map(Number);
+      const targetDate = new Date(y, (m ?? 1) - 1, d ?? 1);
       targetDate.setHours(selectedHour, 0, 0, 0);
 
       const trainerFullName = [selectedTrainer.lastName, selectedTrainer.firstName]
@@ -212,17 +244,16 @@ export default function BookingPage({ user }: Props) {
         createdAt: Timestamp.now(),
       });
 
-      // Refresh my requests
       const updated = await getTrainingRequests({ clientId: user.uid });
       setMyRequests(updated);
 
-      setSuccess("Заявка на тренировку успешно отправлена!");
-      setSelectedDate(null);
+      setSuccess(t("client.booking.success"));
+      setSelectedSlotId(null);
       setSelectedHour(null);
       setMessage("");
       setStep("MY_REQUESTS");
     } catch (e: any) {
-      setError(e?.message ?? "Не удалось отправить заявку");
+      setError(e?.message ?? t("client.booking.loadFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -230,10 +261,9 @@ export default function BookingPage({ user }: Props) {
 
   function goBack() {
     if (step === "PICK_TIME") {
-      setSelectedHour(null);
-      setStep("VIEW_AVAILABILITY");
+      backToAvailability();
     } else if (step === "VIEW_AVAILABILITY") {
-      setSelectedDate(null);
+      setSelectedSlotId(null);
       setSelectedTrainer(null);
       setStep("SELECT_TRAINER");
     } else if (step === "MY_REQUESTS") {
@@ -241,67 +271,33 @@ export default function BookingPage({ user }: Props) {
     }
   }
 
-  /** День недели 0=Пн..6=Вс для нашей логики. */
-  function getDayOfWeek(d: Date): number {
-    const js = d.getDay();
-    return js === 0 ? 6 : js - 1;
-  }
-
-  function workoutToDate(ts: unknown): Date {
-    if (!ts) return new Date(0);
-    const t = ts as { toDate?: () => Date; seconds?: number };
-    if (typeof t.toDate === "function") return t.toDate();
-    if (typeof t.seconds === "number") return new Date(t.seconds * 1000);
-    return new Date(0);
-  }
-
-  /** Свободные часы на конкретную дату (по расписанию тренера и без уже занятых). */
-  function getHoursForDate(date: Date): number[] {
-    const dayOfWeek = getDayOfWeek(date);
-    const slot = availability.find((a) => a.dayOfWeek === dayOfWeek);
-    if (!slot) return [];
-    const bookedHours = new Set<number>();
-    trainerBookedWorkouts.forEach((w) => {
-      const dt = workoutToDate(w.dateTime);
-      if (dt.getDate() === date.getDate() && dt.getMonth() === date.getMonth() && dt.getFullYear() === date.getFullYear()) {
-        bookedHours.add(dt.getHours());
-      }
-    });
-    const hours: number[] = [];
-    for (let h = slot.startHour; h < slot.endHour; h++) {
-      if (!bookedHours.has(h)) hours.push(h);
-    }
-    return hours;
-  }
-
-  /** Есть ли у тренера окно в этот день (по дню недели). */
-  function isDateAvailable(date: Date): boolean {
-    return availability.some((a) => a.dayOfWeek === getDayOfWeek(date));
-  }
+  const STATUS_LABELS: Record<string, { text: string; cls: string }> = {
+    pending: { text: t("client.booking.statusPending"), cls: "bg-amber-100 text-amber-800" },
+    approved: { text: t("client.booking.statusApproved"), cls: "bg-emerald-100 text-emerald-800" },
+    rejected: { text: t("client.booking.statusRejected"), cls: "bg-red-100 text-red-700" },
+  };
 
   return (
-    <ClientLayout title="Запись на тренировку">
+    <ClientLayout title={t("client.booking.title")}>
       <div className="space-y-4">
-        {/* Header */}
         <Card className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-hsc-panel">
-              Индивидуальная тренировка
+              {t("client.booking.individualHeader")}
             </h2>
             <Button
               size="sm"
               variant={step === "MY_REQUESTS" ? "primary" : "ghost"}
               onClick={() => setStep("MY_REQUESTS")}
             >
-              Мои заявки ({myRequests.length})
+              {t("client.booking.myRequests")} ({myRequests.length})
             </Button>
           </div>
           <p className="text-xs text-slate-700">
-            Выберите тренера, удобное время и отправьте заявку на индивидуальную тренировку.
+            {t("client.booking.intro")}
           </p>
         </Card>
 
-        {/* Notifications */}
         {error && (
           <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
             {error}
@@ -313,7 +309,6 @@ export default function BookingPage({ user }: Props) {
           </div>
         )}
 
-        {/* Step indicator */}
         {step !== "MY_REQUESTS" && (
           <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500">
             <span
@@ -323,57 +318,54 @@ export default function BookingPage({ user }: Props) {
                 setStep("SELECT_TRAINER");
               }}
             >
-              1. Тренер
+              {t("client.booking.step1")}
             </span>
             <span>→</span>
             <span
-              className={step === "VIEW_AVAILABILITY" ? "text-hsc-panel font-bold" : ""}
+              className={`${step === "VIEW_AVAILABILITY" ? "text-hsc-panel font-bold" : ""} ${selectedTrainer ? "cursor-pointer hover:text-hsc-panel" : ""}`}
+              onClick={() => { if (selectedTrainer) setStep("VIEW_AVAILABILITY"); }}
             >
-              2. Расписание
+              {t("client.booking.step2")}
             </span>
             <span>→</span>
-            <span
-              className={step === "PICK_TIME" ? "text-hsc-panel font-bold" : ""}
-            >
-              3. Запись
-            </span>
+            <span className={step === "PICK_TIME" ? "text-hsc-panel font-bold" : ""}>{t("client.booking.step3")}</span>
           </div>
         )}
 
         {loading ? (
-          <Card className="text-xs text-slate-700">Загрузка данных...</Card>
+          <Card className="text-xs text-slate-700">{t("client.booking.loading")}</Card>
         ) : step === "SELECT_TRAINER" ? (
-          /* =========== STEP 1: SELECT TRAINER =========== */
           <Card className="space-y-3">
             <h3 className="text-sm font-semibold text-hsc-panel">
-              Выберите тренера
+              {t("client.booking.selectTrainer")}
             </h3>
             {trainers.length === 0 ? (
               <p className="text-xs text-slate-700">
-                Тренеры пока не добавлены. Обратитесь к администратору.
+                {t("client.booking.noTrainers")}
               </p>
             ) : (
               <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                {trainers.map((t) => {
-                  const fullName = [t.lastName, t.firstName, t.middleName]
+                {trainers.map((tr) => {
+                  const fullName = [tr.lastName, tr.firstName, tr.middleName]
                     .filter(Boolean)
                     .join(" ");
-                  const specLabel = SPEC_LABELS[t.specialization] ?? t.specialization;
-                  const allSpecs = t.specializations?.length
-                    ? t.specializations.map((s) => SPEC_LABELS[s] ?? s).join(", ")
+                  const specLabelKey = SPEC_KEYS[tr.specialization];
+                  const specLabel = specLabelKey ? t(specLabelKey) : tr.specialization;
+                  const allSpecs = tr.specializations?.length
+                    ? tr.specializations.map((s) => (SPEC_KEYS[s] ? t(SPEC_KEYS[s]) : s)).join(", ")
                     : specLabel;
                   return (
                     <button
-                      key={t.id}
+                      key={tr.id}
                       type="button"
-                      onClick={() => handleSelectTrainer(t)}
+                      onClick={() => handleSelectTrainer(tr)}
                       className="w-full rounded-xl border border-emerald-900/15 bg-white px-4 py-3 text-left transition-colors hover:bg-emerald-50 hover:border-emerald-500/30"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <Avatar
-                            photoUrl={t.photoUrl}
-                            name={[t.lastName, t.firstName].filter(Boolean).join(" ")}
+                            photoUrl={tr.photoUrl}
+                            name={[tr.lastName, tr.firstName].filter(Boolean).join(" ")}
                             size="md"
                           />
                           <div>
@@ -387,21 +379,16 @@ export default function BookingPage({ user }: Props) {
                         </div>
                         <div className="text-right">
                           <div className="text-sm font-black text-hsc-panel">
-                            {formatPrice(t.pricePerTraining)}
+                            {formatPrice(tr.pricePerTraining, locale)}
                           </div>
                           <div className="text-[10px] text-slate-500">
-                            за тренировку
+                            {t("client.booking.perTraining")}
                           </div>
                         </div>
                       </div>
-                      {t.experience > 0 && (
+                      {tr.experience > 0 && (
                         <div className="mt-1 text-[10px] text-slate-500">
-                          Опыт: {t.experience}{" "}
-                          {t.experience === 1
-                            ? "год"
-                            : t.experience < 5
-                            ? "года"
-                            : "лет"}
+                          {t("client.booking.experience")}: {tr.experience} {t("client.booking.years")}
                         </div>
                       )}
                     </button>
@@ -411,194 +398,176 @@ export default function BookingPage({ user }: Props) {
             )}
           </Card>
         ) : step === "VIEW_AVAILABILITY" ? (
-          /* =========== STEP 2: VIEW AVAILABILITY =========== */
           <Card className="space-y-3">
             <div className="flex items-center gap-2">
               <button
                 onClick={goBack}
                 className="rounded-lg p-1 text-slate-500 hover:bg-emerald-50 hover:text-hsc-panel transition-colors"
               >
-                ← Назад
+                ← {t("common.back")}
               </button>
               <h3 className="text-sm font-semibold text-hsc-panel">
-                Расписание: {selectedTrainer?.lastName} {selectedTrainer?.firstName}
+                {t("client.booking.scheduleHeader")}: {selectedTrainer?.lastName} {selectedTrainer?.firstName}
               </h3>
             </div>
 
             {availability.length === 0 ? (
               <p className="text-xs text-slate-700">
-                Тренер пока не указал своё расписание. Попробуйте позже.
+                {t("client.booking.noSlots")}
               </p>
             ) : (
-              <>
+              <div className="space-y-3">
                 <p className="text-xs text-slate-600">
-                  Выберите дату из ближайших 7 дней, затем свободный час.
+                  {t("client.booking.scheduleHint")}
                 </p>
 
-                {/* 7 кнопок с датами */}
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {next7Days.map((d) => {
-                    const available = isDateAvailable(d);
-                    const isSelected = selectedDate && d.toDateString() === selectedDate.toDateString();
-                    const dayLabel = DAY_LABELS[getDayOfWeek(d)];
-                    const dateStr = d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                  {availability.map((slot) => {
+                    const isOpen = selectedSlotId === slot.id;
+                    const hours = getHoursForSlot(slot);
                     return (
-                      <button
-                        key={d.getTime()}
-                        type="button"
-                        disabled={!available}
-                        onClick={() => {
-                          setSelectedDate(d);
-                          setSelectedHour(null);
-                        }}
-                        className={`rounded-xl py-2.5 text-center text-xs font-semibold transition-colors ${
-                          isSelected
-                            ? "bg-hsc-panel text-white shadow"
-                            : available
-                            ? "bg-emerald-50 text-hsc-panel hover:bg-emerald-100"
-                            : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                        }`}
-                      >
-                        <span className="block">{dayLabel}</span>
-                        <span className="block text-[10px] opacity-90">{dateStr}</span>
-                      </button>
+                      <div key={slot.id} className="rounded-xl border border-emerald-900/15 bg-white">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSlotId(isOpen ? null : slot.id)}
+                          className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                            isOpen ? "bg-emerald-50 rounded-t-xl" : "hover:bg-emerald-50/60 rounded-xl"
+                          }`}
+                        >
+                          <div>
+                            <div className="font-semibold text-hsc-panel">{formatDateLabel(slot.date, locale)}</div>
+                            <div className="text-[11px] text-slate-600">
+                              {slot.startTime} – {slot.endTime}{" "}
+                              <span className="text-slate-400">| {t("client.booking.free")}: {hours.length}</span>
+                            </div>
+                          </div>
+                          <span className="text-slate-400">{isOpen ? "▴" : "▾"}</span>
+                        </button>
+                        {isOpen && (
+                          <div className="px-3 pb-3">
+                            {hours.length === 0 ? (
+                              <p className="text-[11px] text-slate-500">{t("client.booking.noFreeHours")}</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {hours.map((hour) => (
+                                  <button
+                                    key={hour}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedHour(hour);
+                                      setStep("PICK_TIME");
+                                    }}
+                                    className="rounded-xl px-3 py-2 text-xs font-semibold bg-white border border-emerald-900/15 text-hsc-panel hover:bg-emerald-50 transition-colors"
+                                  >
+                                    {String(hour).padStart(2, "0")}:00
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
-
-                {/* Часы на выбранную дату */}
-                {selectedDate && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-slate-600">
-                      Свободные часы на {selectedDate.toLocaleDateString("ru-RU", { weekday: "short", day: "2-digit", month: "2-digit" })}:
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {getHoursForDate(selectedDate).length === 0 ? (
-                        <p className="text-[11px] text-slate-500">На эту дату нет свободных слотов.</p>
-                      ) : (
-                        getHoursForDate(selectedDate).map((hour) => {
-                          const isSelected = selectedHour === hour;
-                          return (
-                            <button
-                              key={hour}
-                              type="button"
-                              onClick={() => {
-                                setSelectedHour(hour);
-                                setStep("PICK_TIME");
-                              }}
-                              className={`rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${
-                                isSelected
-                                  ? "bg-hsc-panel text-white shadow"
-                                  : "bg-white border border-emerald-900/15 text-hsc-panel hover:bg-emerald-50"
-                              }`}
-                            >
-                              {String(hour).padStart(2, "0")}:00
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                )}
-              </>
+              </div>
             )}
           </Card>
         ) : step === "PICK_TIME" ? (
-          /* =========== STEP 3: CONFIRM & SEND =========== */
           <Card className="space-y-4">
             <div className="flex items-center gap-2">
               <button
-                onClick={goBack}
+                onClick={backToAvailability}
                 className="rounded-lg p-1 text-slate-500 hover:bg-emerald-50 hover:text-hsc-panel transition-colors"
               >
-                ← Назад
+                {t("client.booking.backToSchedule")}
               </button>
               <h3 className="text-sm font-semibold text-hsc-panel">
-                Подтверждение записи
+                {t("client.booking.confirmHeader")}
               </h3>
             </div>
 
-            {/* Summary */}
             <div className="rounded-xl bg-emerald-50 p-3 space-y-1.5 text-xs">
               <div className="flex justify-between">
-                <span className="text-slate-600">Тренер:</span>
+                <span className="text-slate-600">{t("client.booking.trainer")}:</span>
                 <span className="font-semibold text-hsc-panel">
                   {selectedTrainer?.lastName} {selectedTrainer?.firstName}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Специализация:</span>
+                <span className="text-slate-600">{t("client.booking.specialization")}:</span>
                 <span className="font-medium text-slate-800">
-                  {SPEC_LABELS[selectedTrainer?.specialization ?? ""] ?? selectedTrainer?.specialization}
+                  {selectedTrainer?.specialization && SPEC_KEYS[selectedTrainer.specialization]
+                    ? t(SPEC_KEYS[selectedTrainer.specialization])
+                    : selectedTrainer?.specialization}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Дата и время:</span>
+                <span className="text-slate-600">{t("client.booking.dateTime")}:</span>
                 <span className="font-medium text-slate-800">
-                  {selectedDate && selectedHour !== null
-                    ? selectedDate.toLocaleDateString("ru-RU") + ", " + String(selectedHour).padStart(2, "0") + ":00"
+                  {selectedSlot && selectedHour !== null
+                    ? `${formatDateLabel(selectedSlot.date, locale)}, ${String(selectedHour).padStart(2, "0")}:00`
                     : "—"}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Время:</span>
-                <span className="font-medium text-slate-800">
-                  {selectedHour !== null ? `${String(selectedHour).padStart(2, "0")}:00` : "—"}
-                </span>
+                <span className="text-slate-600">{t("client.booking.duration")}:</span>
+                <span className="font-medium text-slate-800">60 {t("common.minutes")}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Длительность:</span>
-                <span className="font-medium text-slate-800">60 мин</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">Стоимость:</span>
+                <span className="text-slate-600">{t("client.booking.price")}:</span>
                 <span className="font-bold text-hsc-panel">
-                  {formatPrice(selectedTrainer?.pricePerTraining ?? 0)}
+                  {formatPrice(selectedTrainer?.pricePerTraining ?? 0, locale)}
                 </span>
               </div>
             </div>
 
-            {/* Message */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-slate-600">
-                Комментарий (необязательно):
+                {t("client.booking.commentLabel")}
               </label>
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={2}
-                placeholder="Опишите ваши цели или пожелания..."
+                placeholder={t("client.booking.commentPlaceholder")}
                 className="block w-full rounded-xl border border-emerald-900/20 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hsc-panel focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--hsc-back)]"
               />
             </div>
 
-            {/* Submit */}
-            <Button
-              fullWidth
-              disabled={submitting}
-              onClick={handleSubmit}
-            >
-              {submitting ? "Отправка заявки..." : "Отправить заявку"}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={backToAvailability}
+                className="flex-1"
+              >
+                {t("client.booking.toSchedule")}
+              </Button>
+              <Button
+                disabled={submitting || !authReady}
+                onClick={handleSubmit}
+                className="flex-1"
+              >
+                {submitting ? t("client.booking.submitting") : t("client.booking.submit")}
+              </Button>
+            </div>
           </Card>
         ) : (
-          /* =========== STEP 4: MY REQUESTS =========== */
           <Card className="space-y-3">
             <div className="flex items-center gap-2">
               <button
                 onClick={goBack}
                 className="rounded-lg p-1 text-slate-500 hover:bg-emerald-50 hover:text-hsc-panel transition-colors"
               >
-                ← Назад
+                ← {t("common.back")}
               </button>
-              <h3 className="text-sm font-semibold text-hsc-panel">
-                Мои заявки
-              </h3>
+              <h3 className="text-sm font-semibold text-hsc-panel">{t("client.booking.requestsHeader")}</h3>
             </div>
 
             {myRequests.length === 0 ? (
               <p className="text-xs text-slate-700">
-                У вас пока нет заявок. Выберите тренера и удобное время, чтобы записаться.
+                {t("client.booking.noRequests")}
               </p>
             ) : (
               <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
@@ -620,8 +589,8 @@ export default function BookingPage({ user }: Props) {
                         </span>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-600">
-                        <span>{formatDateTime(req.requestedDateTime)}</span>
-                        <span>{req.durationMinutes} мин</span>
+                        <span>{formatDateTime(req.requestedDateTime, locale)}</span>
+                        <span>{req.durationMinutes} {t("common.minutes")}</span>
                       </div>
                       {req.message && (
                         <p className="mt-1 text-[11px] text-slate-500 italic">
@@ -640,7 +609,7 @@ export default function BookingPage({ user }: Props) {
               fullWidth
               onClick={() => setStep("SELECT_TRAINER")}
             >
-              Новая заявка
+              {t("client.booking.newRequest")}
             </Button>
           </Card>
         )}

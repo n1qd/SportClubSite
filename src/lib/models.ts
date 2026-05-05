@@ -1,6 +1,12 @@
 import { Timestamp } from "firebase/firestore";
 
+// =============================================================================
+//  HypeSportClub — модели данных
+//  Соответствует структуре БД (см. rules and example data/firestore_export.json)
+// =============================================================================
+
 export type UserRole = "CLIENT" | "TRAINER" | "ADMIN" | "MANAGER";
+export type Language = "ru" | "en";
 
 export interface User {
   id: string;
@@ -17,6 +23,7 @@ export interface User {
   height?: number;
   fitnessGoal?: "WEIGHT_LOSS" | "MUSCLE_GAIN" | "MAINTENANCE";
   photoUrl?: string;
+  language?: Language;
 }
 
 export interface Subscription {
@@ -81,8 +88,13 @@ export interface GroupWorkout {
   participantIds: string[];
   isIndividual: boolean;
   active: boolean;
-  status?: "pending" | "approved" | "rejected"; // для согласования с админом
+  status?: "pending" | "approved" | "rejected";
+  /** Привязка к слоту доступности тренера, если запись пришла оттуда. */
+  availabilitySlotId?: string;
 }
+
+// ==================== ИСТОРИЯ BMR-РАСЧЁТОВ ====================
+// Подколлекция users/{uid}/nutritionHistory — заполняет Cloud Function calculateBMR.
 
 export interface NutritionHistoryEntry {
   id: string;
@@ -104,14 +116,34 @@ export interface NutritionHistoryEntry {
   };
 }
 
-// ==================== ДОСТУПНОСТЬ ТРЕНЕРА ====================
+// ==================== ДНЕВНИК ПИТАНИЯ (food_entries) ====================
+// Плоская коллекция — фактический приём пищи клиентом за день.
+
+export interface FoodEntry {
+  id: string;
+  userId: string;
+  productName: string;
+  weightGrams: number;
+  calories: number;
+  proteins: number;
+  fats: number;
+  carbs: number;
+  date: string;          // "YYYY-MM-DD"
+  createdAt: Timestamp;
+}
+
+// ==================== ДОСТУПНОСТЬ ТРЕНЕРА (по конкретным датам) ====================
+// Соответствует структуре в БД: { date, startTime, endTime, isAvailable, trainerId, trainerName, notes }
 
 export interface TrainerAvailability {
   id: string;
   trainerId: string;
-  dayOfWeek: number; // 0=Пн, 6=Вс
-  startHour: number; // 9
-  endHour: number;   // 18
+  trainerName?: string;
+  date: string;          // ISO "YYYY-MM-DDT00:00:00+00:00" или "YYYY-MM-DD"
+  startTime: string;     // "HH:mm"
+  endTime: string;       // "HH:mm"
+  isAvailable: boolean;
+  notes?: string;
 }
 
 // ==================== ЗАПРОСЫ НА ТРЕНИРОВКУ ====================
@@ -129,7 +161,8 @@ export interface TrainingRequest {
   createdAt: Timestamp;
 }
 
-// ==================== МЕССЕНДЖЕР ====================
+// ==================== МЕССЕНДЖЕР (плоская коллекция chats) ====================
+// Каждый документ — отдельное сообщение; chatId = "uidA_uidB" (отсортировано).
 
 export interface ChatMessage {
   id: string;
@@ -137,17 +170,19 @@ export interface ChatMessage {
   senderId: string;
   senderName: string;
   text: string;
-  createdAt: Timestamp;
-  read: boolean;
+  /** В реальной БД хранится поле `timestamp` (Timestamp). */
+  timestamp: Timestamp;
+  isRead: boolean;
 }
 
+/** Чат — производная сущность, агрегируется на клиенте по chatId. */
 export interface Chat {
-  id: string;
-  participantIds: string[];
+  id: string;                    // == chatId
+  participantIds: string[];      // [uidA, uidB]
   participantNames: Record<string, string>;
   lastMessage?: string;
   lastMessageAt?: Timestamp;
-  workoutId?: string; // привязка к тренировке
+  unreadForMe?: number;
 }
 
 // ==================== ФИНАНСЫ (руководитель) ====================
@@ -165,9 +200,18 @@ export interface Expense {
 
 export interface Revenue {
   id: string;
-  source: string; // "subscription" | "individual_training" | "other"
+  source: string;
   amount: number;
   description: string;
   date: Timestamp;
   userId?: string;
+}
+
+// ==================== КАЛЕНДАРЬ АКТИВНОСТИ ====================
+// Производная сущность: рассчитывается из group_workouts (где клиент — участник).
+
+export interface GymVisit {
+  date: string;          // "YYYY-MM-DD"
+  workoutIds: string[];
+  workoutNames: string[];
 }

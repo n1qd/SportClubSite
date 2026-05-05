@@ -10,16 +10,17 @@ import {
   cancelWorkoutSignUp,
   getTrainingRequests,
 } from "@/lib/db";
-import type { GroupWorkout } from "@/lib/models";
-import type { TrainingRequest } from "@/lib/models";
+import type { GroupWorkout, TrainingRequest } from "@/lib/models";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 type Props = AuthedPageProps;
 
-type Tab = "MY" | "GROUP" | "INDIVIDUAL";
+type Tab = "MY" | "BOOK";
+type BookSub = "GROUP" | "INDIVIDUAL";
 
-function formatDate(ts: any) {
-  const date = "toDate" in ts ? ts.toDate() : new Date();
-  return date.toLocaleString("ru-RU", {
+function formatDate(ts: any, locale: string) {
+  const date = ts && "toDate" in ts ? ts.toDate() : new Date();
+  return date.toLocaleString(locale, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -29,12 +30,24 @@ function formatDate(ts: any) {
 }
 
 export default function TrainingPage({ user }: Props) {
+  const { t, language } = useTranslation();
+  const locale = language === "en" ? "en-US" : "ru-RU";
   const [tab, setTab] = useState<Tab>("MY");
+  const [bookSub, setBookSub] = useState<BookSub>("GROUP");
   const [workouts, setWorkouts] = useState<GroupWorkout[]>([]);
   const [approvedRequests, setApprovedRequests] = useState<TrainingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  async function reload() {
+    const [list, reqs] = await Promise.all([
+      getAllGroupWorkouts(),
+      getTrainingRequests({ clientId: user.uid, status: "approved" }),
+    ]);
+    setWorkouts(list);
+    setApprovedRequests(reqs);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -42,16 +55,9 @@ export default function TrainingPage({ user }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const [list, reqs] = await Promise.all([
-          getAllGroupWorkouts(),
-          getTrainingRequests({ clientId: user.uid, status: "approved" }),
-        ]);
-        if (!cancelled) {
-          setWorkouts(list);
-          setApprovedRequests(reqs);
-        }
+        await reload();
       } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? "Не удалось загрузить тренировки");
+        if (!cancelled) setError(e?.message ?? t("client.training.loadFailed"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -59,6 +65,7 @@ export default function TrainingPage({ user }: Props) {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.uid]);
 
   const now = useMemo(() => new Date(), []);
@@ -87,39 +94,26 @@ export default function TrainingPage({ user }: Props) {
     return [...fromGroup, ...fromIndividual].sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [workouts, user.uid, approvedRequests, now]);
 
-  const myWorkouts = useMemo(
-    () =>
-      workouts.filter((w) => {
-        const dt = w.dateTime?.toDate?.() ?? new Date();
-        if (dt < now) return false;
-        const isIndividual = w.isIndividual || (w.maxParticipants === 1 && !!w.clientId);
-        const isMineIndividual = isIndividual && w.clientId === user.uid;
-        const isSignedGroup = !isIndividual && (w.participantIds ?? []).includes(user.uid);
-        return isMineIndividual || isSignedGroup;
-      }),
-    [workouts, user.uid, now]
-  );
-
-  // Групповые тренировки: только будущие и на следующие 7 дней; без тех, на которые уже записан
   const groupWorkouts = useMemo(() => {
-    const in7Days = new Date(now);
-    in7Days.setDate(in7Days.getDate() + 7);
-    return workouts.filter((w) => {
-      if (w.isIndividual || (w.participantIds ?? []).includes(user.uid)) return false;
-      const dt = w.dateTime?.toDate?.() ?? new Date();
-      return dt >= now && dt <= in7Days;
-    });
-  }, [workouts, user.uid, now]);
+    const in14Days = new Date(now);
+    in14Days.setDate(in14Days.getDate() + 14);
+    return workouts
+      .filter((w) => {
+        if (w.isIndividual) return false;
+        const dt = w.dateTime?.toDate?.() ?? new Date();
+        return dt >= now && dt <= in14Days;
+      })
+      .sort((a, b) => a.dateTime.toMillis() - b.dateTime.toMillis());
+  }, [workouts, now]);
 
   async function handleSignUp(w: GroupWorkout) {
     setActionLoadingId(w.id);
     setError(null);
     try {
       await signUpForWorkout(w.id, user.uid);
-      const updated = await getAllGroupWorkouts();
-      setWorkouts(updated);
+      await reload();
     } catch (e: any) {
-      setError(e?.message ?? "Не удалось записаться на тренировку");
+      setError(e?.message ?? t("client.training.loadFailed"));
     } finally {
       setActionLoadingId(null);
     }
@@ -130,79 +124,79 @@ export default function TrainingPage({ user }: Props) {
     setError(null);
     try {
       await cancelWorkoutSignUp(w.id, user.uid);
-      const updated = await getAllGroupWorkouts();
-      setWorkouts(updated);
+      await reload();
     } catch (e: any) {
-      setError(e?.message ?? "Не удалось отменить запись");
+      setError(e?.message ?? t("client.training.loadFailed"));
     } finally {
       setActionLoadingId(null);
     }
   }
 
   return (
-    <ClientLayout title="Тренировки">
+    <ClientLayout title={t("client.training.title")}>
       <div className="space-y-4">
         <Card className="space-y-2">
-          <h2 className="text-sm font-semibold text-hsc-panel">Тренировки</h2>
-          <p className="text-xs text-slate-700">
-            Как и в мобильном приложении, здесь доступны ваши тренировки и список
-            групповых занятий, на которые можно записаться.
-          </p>
+          <h2 className="text-sm font-semibold text-hsc-panel">{t("client.training.title")}</h2>
+          <p className="text-xs text-slate-700">{t("client.training.intro")}</p>
         </Card>
 
-        <div className="grid grid-cols-3 gap-1 rounded-xl bg-[color:var(--hsc-surface)] p-1">
+        <div className="grid grid-cols-2 gap-1 rounded-xl bg-[color:var(--hsc-surface)] p-1">
           <button
             type="button"
             onClick={() => setTab("MY")}
-            className={`rounded-lg py-2 text-[10px] font-semibold sm:text-xs ${
-              tab === "MY"
-                ? "bg-[color:var(--hsc-panel)] text-white shadow"
-                : "text-slate-700"
+            className={`rounded-lg py-2 text-xs font-semibold ${
+              tab === "MY" ? "bg-[color:var(--hsc-panel)] text-white shadow" : "text-slate-700"
             }`}
           >
-            Мои ближайшие
+            {t("client.training.tabMy")} ({myWorkoutsMerged.length})
           </button>
           <button
             type="button"
-            onClick={() => setTab("GROUP")}
-            className={`rounded-lg py-2 text-[10px] font-semibold sm:text-xs ${
-              tab === "GROUP"
-                ? "bg-[color:var(--hsc-panel)] text-white shadow"
-                : "text-slate-700"
+            onClick={() => setTab("BOOK")}
+            className={`rounded-lg py-2 text-xs font-semibold ${
+              tab === "BOOK" ? "bg-[color:var(--hsc-panel)] text-white shadow" : "text-slate-700"
             }`}
           >
-            Групповые
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("INDIVIDUAL")}
-            className={`rounded-lg py-2 text-[10px] font-semibold sm:text-xs ${
-              tab === "INDIVIDUAL"
-                ? "bg-[color:var(--hsc-panel)] text-white shadow"
-                : "text-slate-700"
-            }`}
-          >
-            Индивидуальные
+            {t("client.training.tabBook")}
           </button>
         </div>
 
+        {tab === "BOOK" && (
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-emerald-50 p-1">
+            <button
+              type="button"
+              onClick={() => setBookSub("GROUP")}
+              className={`rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
+                bookSub === "GROUP" ? "bg-white text-hsc-panel shadow-sm" : "text-slate-600"
+              }`}
+            >
+              {t("client.training.subTabGroup")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setBookSub("INDIVIDUAL")}
+              className={`rounded-lg py-1.5 text-[11px] font-medium transition-colors ${
+                bookSub === "INDIVIDUAL" ? "bg-white text-hsc-panel shadow-sm" : "text-slate-600"
+              }`}
+            >
+              {t("client.training.subTabIndividual")}
+            </button>
+          </div>
+        )}
+
         {error && (
-          <Card className="border border-red-200 bg-red-50 text-xs text-red-700">
-            {error}
-          </Card>
+          <Card className="border border-red-200 bg-red-50 text-xs text-red-700">{error}</Card>
         )}
 
         {loading ? (
-          <Card className="text-xs text-slate-700">Загрузка расписания...</Card>
+          <Card className="text-xs text-slate-700">{t("client.training.loading")}</Card>
         ) : tab === "MY" ? (
           <Card className="space-y-2">
-            <h3 className="text-sm font-semibold text-hsc-panel">Ближайшие тренировки (групповые и индивидуальные)</h3>
+            <h3 className="text-sm font-semibold text-hsc-panel">{t("client.training.upcoming")}</h3>
             {myWorkoutsMerged.length === 0 ? (
-              <p className="text-xs text-slate-700">
-                У вас пока нет запланированных тренировок. Запишитесь на групповое или индивидуальное занятие.
-              </p>
+              <p className="text-xs text-slate-700">{t("client.training.noUpcoming")}</p>
             ) : (
-              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+              <div className="space-y-2">
                 {myWorkoutsMerged.map((item) =>
                   item.type === "group" ? (
                     <div
@@ -211,15 +205,15 @@ export default function TrainingPage({ user }: Props) {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="font-semibold text-hsc-panel">
-                          {item.workout.isIndividual ? "Индивидуальная тренировка" : item.workout.name}
+                          {item.workout.isIndividual ? t("client.training.individualWorkout") : item.workout.name}
                         </div>
                         <div className="text-[10px] text-slate-500">
-                          {formatDate(item.workout.dateTime)}
+                          {formatDate(item.workout.dateTime, locale)}
                         </div>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-700">
-                        <span>Тренер: {item.workout.trainerName}</span>
-                        <span>Длительность: {item.workout.durationMinutes} мин</span>
+                        <span>{t("common.trainer")}: {item.workout.trainerName}</span>
+                        <span>{t("common.duration")}: {item.workout.durationMinutes} {t("common.minutes")}</span>
                       </div>
                       {!item.workout.isIndividual && (
                         <div className="mt-2 flex justify-end">
@@ -229,7 +223,7 @@ export default function TrainingPage({ user }: Props) {
                             disabled={actionLoadingId === item.workout.id}
                             onClick={() => handleCancel(item.workout)}
                           >
-                            {actionLoadingId === item.workout.id ? "Отмена..." : "Отменить запись"}
+                            {actionLoadingId === item.workout.id ? t("client.training.cancelling") : t("client.training.cancel")}
                           </Button>
                         </div>
                       )}
@@ -240,14 +234,14 @@ export default function TrainingPage({ user }: Props) {
                       className="rounded-xl border border-emerald-900/15 bg-emerald-50 px-3 py-2 text-xs"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="font-semibold text-hsc-panel">Индивидуальная тренировка</div>
+                        <div className="font-semibold text-hsc-panel">{t("client.training.individualWorkout")}</div>
                         <div className="text-[10px] text-slate-500">
-                          {formatDate(item.request.requestedDateTime)}
+                          {formatDate(item.request.requestedDateTime, locale)}
                         </div>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-700">
-                        <span>Тренер: {item.request.trainerName}</span>
-                        <span>Длительность: {item.request.durationMinutes} мин</span>
+                        <span>{t("common.trainer")}: {item.request.trainerName}</span>
+                        <span>{t("common.duration")}: {item.request.durationMinutes} {t("common.minutes")}</span>
                       </div>
                     </div>
                   )
@@ -255,62 +249,76 @@ export default function TrainingPage({ user }: Props) {
               </div>
             )}
           </Card>
-        ) : tab === "INDIVIDUAL" ? (
+        ) : bookSub === "INDIVIDUAL" ? (
           <Card className="space-y-3">
-            <h3 className="text-sm font-semibold text-hsc-panel">Индивидуальная запись</h3>
-            <p className="text-xs text-slate-700">
-              Выберите тренера, удобное время и отправьте заявку. После одобрения тренировка появится в «Мои ближайшие».
-            </p>
+            <h3 className="text-sm font-semibold text-hsc-panel">{t("client.training.individualHeader")}</h3>
+            <p className="text-xs text-slate-700">{t("client.training.individualIntro")}</p>
             <div className="flex flex-wrap gap-2">
               <Button href="/client/booking" size="sm">
-                Записаться на индивидуальную тренировку
+                {t("client.training.bookTrainer")}
               </Button>
               <Button href="/client/booking?step=requests" size="sm" variant="secondary">
-                Мои заявки
+                {t("client.training.myRequests")}
               </Button>
             </div>
           </Card>
         ) : (
           <Card className="space-y-2">
+            <h3 className="text-sm font-semibold text-hsc-panel">{t("client.training.groupHeader")}</h3>
             {groupWorkouts.length === 0 ? (
-              <p className="text-xs text-slate-700">
-                Пока нет доступных групповых тренировок. Загляните позже.
-              </p>
+              <p className="text-xs text-slate-700">{t("client.training.groupEmpty")}</p>
             ) : (
-              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+              <div className="space-y-2">
                 {groupWorkouts.map((w) => {
+                  const signedUp = (w.participantIds ?? []).includes(user.uid);
                   const isFull = (w.currentParticipants ?? 0) >= (w.maxParticipants ?? 20);
+                  const cls = signedUp
+                    ? "rounded-xl border border-emerald-500/40 bg-emerald-50 px-3 py-2 text-xs"
+                    : "rounded-xl border border-emerald-900/15 bg-white px-3 py-2 text-xs";
                   return (
-                    <div
-                      key={w.id}
-                      className="rounded-xl border border-emerald-900/15 bg-white px-3 py-2 text-xs"
-                    >
+                    <div key={w.id} className={cls}>
                       <div className="flex items-center justify-between gap-2">
-                        <div className="font-semibold text-hsc-panel">{w.name}</div>
-                        <div className="text-[10px] text-slate-500">
-                          {formatDate(w.dateTime)}
+                        <div className="font-semibold text-hsc-panel">
+                          {w.name}
+                          {signedUp && (
+                            <span className="ml-2 rounded-full bg-emerald-600 px-2 py-0.5 text-[9px] font-medium text-white">
+                              {t("client.training.signedUp")}
+                            </span>
+                          )}
                         </div>
+                        <div className="text-[10px] text-slate-500">{formatDate(w.dateTime, locale)}</div>
                       </div>
                       <p className="mt-1 text-[11px] text-slate-700">{w.description}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-700">
-                        <span>Тренер: {w.trainerName}</span>
-                        <span>Длительность: {w.durationMinutes} мин</span>
+                        <span>{t("common.trainer")}: {w.trainerName}</span>
+                        <span>{t("common.duration")}: {w.durationMinutes} {t("common.minutes")}</span>
                         <span>
-                          Участники: {w.currentParticipants}/{w.maxParticipants}
+                          {t("client.training.participants")}: {w.currentParticipants}/{w.maxParticipants}
                         </span>
                       </div>
                       <div className="mt-2 flex justify-end">
-                        <Button
-                          size="sm"
-                          disabled={isFull || actionLoadingId === w.id}
-                          onClick={() => handleSignUp(w)}
-                        >
-                          {isFull
-                            ? "Мест нет"
-                            : actionLoadingId === w.id
-                            ? "Запись..."
-                            : "Записаться"}
-                        </Button>
+                        {signedUp ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={actionLoadingId === w.id}
+                            onClick={() => handleCancel(w)}
+                          >
+                            {actionLoadingId === w.id ? t("client.training.cancelling") : t("client.training.cancel")}
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            disabled={isFull || actionLoadingId === w.id}
+                            onClick={() => handleSignUp(w)}
+                          >
+                            {isFull
+                              ? t("client.training.full")
+                              : actionLoadingId === w.id
+                                ? t("client.training.signingUp")
+                                : t("client.training.signUp")}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   );
@@ -326,4 +334,3 @@ export default function TrainingPage({ user }: Props) {
 
 export const getServerSideProps: GetServerSideProps<Props> = (ctx) =>
   requireAuth(ctx, ["user", "admin", "manager"]);
-

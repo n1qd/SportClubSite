@@ -122,7 +122,7 @@ export default function TrainerMessages({ user }: Props) {
                 {messages.map((m) => {
                   const isMine = m.senderId === user.uid;
                   const photoUrl = isMine ? currentUserPhotoUrl : participantPhotoUrls[m.senderId];
-                  const displayName = isMine ? ([user.lastName, user.firstName].filter(Boolean).join(" ") || user.email?.split("@")[0] ?? "Вы") : m.senderName;
+                  const displayName = isMine ? (user.email?.split("@")[0] ?? "Вы") : m.senderName;
                   return (
                     <div key={m.id} className={`flex items-end gap-2 ${isMine ? "justify-end" : "justify-start"}`}>
                       {!isMine && <Avatar photoUrl={photoUrl} name={m.senderName} size="sm" className="shrink-0" />}
@@ -131,7 +131,7 @@ export default function TrainerMessages({ user }: Props) {
                       }`}>
                         {!isMine && <div className="mb-0.5 text-[10px] font-semibold text-slate-500">{m.senderName}</div>}
                         <div>{m.text}</div>
-                        <div className={`mt-1 text-[9px] ${isMine ? "text-emerald-100" : "text-slate-400"}`}>{formatTime(m.createdAt)}</div>
+                        <div className={`mt-1 text-[9px] ${isMine ? "text-emerald-100" : "text-slate-400"}`}>{formatTime(m.timestamp)}</div>
                       </div>
                       {isMine && <Avatar photoUrl={photoUrl} name={displayName} size="sm" className="shrink-0" />}
                     </div>
