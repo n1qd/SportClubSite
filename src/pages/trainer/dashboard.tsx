@@ -11,18 +11,6 @@ import { Input } from "@/components/ui/Input";
 
 type Props = AuthedPageProps;
 
-function formatDateTime(ts: any) {
-  if (!ts) return "—";
-  const d = "toDate" in ts ? ts.toDate() : new Date();
-  return d.toLocaleDateString("ru-RU", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
 export default function TrainerDashboard({ user }: Props) {
   const [workouts, setWorkouts] = useState<GroupWorkout[]>([]);
   const [approvedRequests, setApprovedRequests] = useState<any[]>([]);

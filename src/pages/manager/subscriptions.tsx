@@ -271,8 +271,11 @@ export const getServerSideProps: GetServerSideProps<Props> = async (ctx) => {
   const result = await requireAuth(ctx, ["manager", "admin"]);
   if ("redirect" in result) return result;
   // Шаблоны абонементов управляет только руководитель; администратор только выдаёт абонементы клиентам
-  if (result.props?.user?.role === "admin") {
-    return { redirect: { destination: "/admin/dashboard", permanent: false } };
+  if ("props" in result) {
+    const props = await result.props;
+    if (props.user?.role === "admin") {
+      return { redirect: { destination: "/admin/dashboard", permanent: false } };
+    }
   }
   return result;
 };

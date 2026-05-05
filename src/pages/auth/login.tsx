@@ -88,8 +88,6 @@ export default function AuthPage() {
     }
   });
 
-  const activeForm = mode === "login" ? loginForm : registerForm;
-
   return (
     <PublicLayout title={mode === "login" ? "Вход" : "Регистрация"}>
       <div className="space-y-5">
@@ -221,20 +219,28 @@ export default function AuthPage() {
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-700">Email</label>
             <Input
-              {...activeForm.register("email")}
+              {...(mode === "login" ? loginForm.register("email") : registerForm.register("email"))}
               type="email"
               placeholder="example@mail.com"
-              error={activeForm.formState.errors.email?.message}
+              error={
+                mode === "login"
+                  ? loginForm.formState.errors.email?.message
+                  : registerForm.formState.errors.email?.message
+              }
             />
           </div>
 
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-700">Пароль</label>
             <Input
-              {...activeForm.register("password")}
+              {...(mode === "login" ? loginForm.register("password") : registerForm.register("password"))}
               type="password"
               placeholder="Минимум 6 символов"
-              error={activeForm.formState.errors.password?.message}
+              error={
+                mode === "login"
+                  ? loginForm.formState.errors.password?.message
+                  : registerForm.formState.errors.password?.message
+              }
             />
           </div>
 

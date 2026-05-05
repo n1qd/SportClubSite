@@ -3,9 +3,9 @@ import { useAuth } from "./useAuth";
 export function usePermissions() {
   const { role } = useAuth();
 
-  const isClient = role === "user";
-  const isAdmin = role === "admin";
-  const isManager = role === "manager";
+  const isClient = role === "CLIENT";
+  const isAdmin = role === "ADMIN";
+  const isManager = role === "MANAGER";
 
   return {
     role,
