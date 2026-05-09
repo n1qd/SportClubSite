@@ -19,6 +19,8 @@ import type { User, UserSubscription, Trainer, Language } from "@/lib/models";
 import { Avatar } from "@/components/ui/Avatar";
 import { useTranslation } from "@/contexts/LanguageContext";
 import type { TranslationKeys } from "@/lib/i18n/translations";
+import { formatRuPhoneInput } from "@/lib/input-masks";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Props = AuthedPageProps;
 
@@ -125,7 +127,7 @@ export default function ProfilePage({ user }: Props) {
         setMySubs(ms);
         setTrainers(tr);
         if (u) {
-          setPhone(u.phone ?? "");
+          setPhone(u.phone ? formatRuPhoneInput(u.phone) : "");
           setEmail(u.email ?? user.email ?? "");
           setGender((u.gender as any) || "MALE");
           setWeight(u.weight ? String(u.weight) : "");
@@ -133,13 +135,13 @@ export default function ProfilePage({ user }: Props) {
           setFitnessGoal(u.fitnessGoal ?? "MAINTENANCE");
         }
       } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? t("common.error"));
+        if (!cancelled) setError(toUserFacingMessage(e, language));
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [user.uid, user.email, t]);
+  }, [user.uid, user.email, t, language]);
 
   useEffect(() => {
     if (success) { const id = setTimeout(() => setSuccess(null), 3000); return () => clearTimeout(id); }
@@ -149,17 +151,23 @@ export default function ProfilePage({ user }: Props) {
     setSaving(true); setError(null);
     try {
       await updateUserContact(user.uid, phone, email);
+      setProfile((prev) => (prev ? { ...prev, phone, email } : null));
       setSuccess(t("client.profile.contactsSaved"));
-    } catch (e: any) { setError(e?.message ?? t("common.error")); }
+    } catch (e: any) { setError(toUserFacingMessage(e, language)); }
     finally { setSaving(false); }
   }
 
   async function saveHealth() {
     setSaving(true); setError(null);
     try {
-      await updateUserHealth(user.uid, gender, parseFloat(weight || "0"), parseFloat(height || "0"), fitnessGoal);
+      const w = parseFloat(weight || "0");
+      const h = parseFloat(height || "0");
+      await updateUserHealth(user.uid, gender, w, h, fitnessGoal);
+      setProfile((prev) =>
+        prev ? { ...prev, gender, weight: w, height: h, fitnessGoal: fitnessGoal as User["fitnessGoal"] | undefined } : null
+      );
       setSuccess(t("client.profile.healthSaved"));
-    } catch (e: any) { setError(e?.message ?? t("common.error")); }
+    } catch (e: any) { setError(toUserFacingMessage(e, language)); }
     finally { setSaving(false); }
   }
 
@@ -186,7 +194,7 @@ export default function ProfilePage({ user }: Props) {
       setProfile((prev) => (prev ? { ...prev, photoUrl: urlToSave } : null));
       setSuccess(t("client.profile.photoUpdated"));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t("client.profile.photoFailed");
+      const msg = toUserFacingMessage(e, language);
       setError(msg);
       setPhotoError(msg);
     } finally {
@@ -215,7 +223,22 @@ export default function ProfilePage({ user }: Props) {
   ];
 
   const activeSubs = mySubs.filter((s) => s.active && remainingDays(s.endDate) > 0);
-  const bmi = computeBMI(profile?.weight, profile?.height);
+  const wParsed = parseFloat(weight);
+  const hParsed = parseFloat(height);
+  const bmi = computeBMI(
+    Number.isFinite(wParsed) && wParsed > 0 ? wParsed : profile?.weight,
+    Number.isFinite(hParsed) && hParsed > 0 ? hParsed : profile?.height
+  );
+  const weightDisplay = !profile
+    ? "—"
+    : weight !== "" && Number.isFinite(wParsed) && wParsed > 0
+      ? wParsed
+      : (profile.weight ?? "—");
+  const heightDisplay = !profile
+    ? "—"
+    : height !== "" && Number.isFinite(hParsed) && hParsed > 0
+      ? hParsed
+      : (profile.height ?? "—");
   const age = profile ? computeAge(profile.birthDate) : 0;
 
   return (
@@ -324,7 +347,13 @@ export default function ProfilePage({ user }: Props) {
 
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-700">{t("client.profile.phone")}</label>
-                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+7 (___) ___-__-__" />
+                  <Input
+                    value={phone}
+                    onChange={(e) => setPhone(formatRuPhoneInput(e.target.value))}
+                    placeholder="+7 (___) ___-__-__"
+                    inputMode="tel"
+                    autoComplete="tel"
+                  />
                 </div>
 
                 <Button size="sm" onClick={saveContact} disabled={saving}>
@@ -344,8 +373,8 @@ export default function ProfilePage({ user }: Props) {
                       <div className="text-2xl font-black">{bmi}</div>
                     </div>
                     <div className="text-right text-[11px]">
-                      <div className="text-emerald-100">{t("client.profile.weightKg")}: {profile.weight ?? "—"}</div>
-                      <div className="text-emerald-100">{t("client.profile.heightCm")}: {profile.height ?? "—"}</div>
+                      <div className="text-emerald-100">{t("client.profile.weightKg")}: {weightDisplay}</div>
+                      <div className="text-emerald-100">{t("client.profile.heightCm")}: {heightDisplay}</div>
                     </div>
                   </div>
                 </div>
@@ -559,7 +588,7 @@ export default function ProfilePage({ user }: Props) {
                       setNewPassword("");
                       setConfirmPassword("");
                     } catch (e: unknown) {
-                      setPasswordError(e instanceof Error ? e.message : t("common.error"));
+                      setPasswordError(toUserFacingMessage(e, language));
                     } finally {
                       setChangingPassword(false);
                     }

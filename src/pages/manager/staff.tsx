@@ -9,6 +9,9 @@ import { requireAuth, type AuthedPageProps } from "@/lib/ssr-auth";
 import { getAllUsers, updateUserData } from "@/lib/db";
 import { changeOwnPassword, getCsrfToken } from "@/lib/auth-client";
 import type { User, UserRole } from "@/lib/models";
+import { formatRuPhoneInput } from "@/lib/input-masks";
+import { useTranslation } from "@/contexts/LanguageContext";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Props = AuthedPageProps;
 
@@ -32,6 +35,7 @@ const ROLE_COLORS: Record<string, string> = {
 type RoleFilter = "ALL" | UserRole;
 
 export default function ManagerStaff({ user }: Props) {
+  const { language } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [section, setSection] = useState<Section>("staff");
   const [search, setSearch] = useState("");
@@ -58,13 +62,7 @@ export default function ManagerStaff({ user }: Props) {
       const all = await getAllUsers();
       setUsers(all);
     } catch (e: any) {
-      const msg = e?.message ?? "Ошибка загрузки";
-      const isPermission = msg.toLowerCase().includes("permission") || e?.code === "permission-denied";
-      setError(
-        isPermission
-          ? "Нет доступа к списку сотрудников. Разверните правила Firestore с правами для роли Руководитель (users: read для isManager)."
-          : msg
-      );
+      setError(toUserFacingMessage(e, language));
       setUsers([]);
     } finally {
       setLoading(false);
@@ -119,7 +117,7 @@ export default function ManagerStaff({ user }: Props) {
       );
       setEditing(null);
     } catch (e: any) {
-      setError(e?.message ?? "Ошибка сохранения");
+      setError(toUserFacingMessage(e, language));
     } finally {
       setSavingId(null);
     }
@@ -152,7 +150,7 @@ export default function ManagerStaff({ user }: Props) {
       setCreateForm({ email: "", password: "", role: "TRAINER", lastName: "", firstName: "", middleName: "", phone: "" });
       await load();
     } catch (e: any) {
-      setCreateError(e?.message ?? "Ошибка создания сотрудника");
+      setCreateError(toUserFacingMessage(e, language));
     } finally {
       setCreatingSaving(false);
     }
@@ -172,7 +170,7 @@ export default function ManagerStaff({ user }: Props) {
         setPasswordNew("");
         setPasswordConfirm("");
       } catch (e: any) {
-        setPasswordError(e?.message ?? "Не удалось сменить пароль");
+        setPasswordError(toUserFacingMessage(e, language));
       } finally {
         setPasswordSaving(false);
       }
@@ -197,7 +195,7 @@ export default function ManagerStaff({ user }: Props) {
       setPasswordNew("");
       setPasswordConfirm("");
     } catch (e: any) {
-      setPasswordError(e?.message ?? "Ошибка смены пароля");
+      setPasswordError(toUserFacingMessage(e, language));
     } finally {
       setPasswordSaving(false);
     }
@@ -347,7 +345,12 @@ export default function ManagerStaff({ user }: Props) {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => setEditing({ ...u })}
+                      onClick={() =>
+                        setEditing({
+                          ...u,
+                          phone: u.phone ? formatRuPhoneInput(u.phone) : "",
+                        })
+                      }
                     >
                       Изменить
                     </Button>
@@ -413,8 +416,10 @@ export default function ManagerStaff({ user }: Props) {
                   <Input
                     value={editing.phone}
                     onChange={(e) =>
-                      setEditing({ ...editing, phone: e.target.value })
+                      setEditing({ ...editing, phone: formatRuPhoneInput(e.target.value) })
                     }
+                    inputMode="tel"
+                    autoComplete="tel"
                   />
                 </div>
               </div>
@@ -506,7 +511,13 @@ export default function ManagerStaff({ user }: Props) {
               </div>
               <div>
                 <label className="text-[10px] text-slate-600">Телефон</label>
-                <Input value={createForm.phone} onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+7 ..." />
+                <Input
+                  value={createForm.phone}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, phone: formatRuPhoneInput(e.target.value) }))}
+                  placeholder="+7 (___) ___-__-__"
+                  inputMode="tel"
+                  autoComplete="tel"
+                />
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button size="sm" variant="ghost" onClick={() => { setCreating(false); setCreateError(null); }}>Отмена</Button>

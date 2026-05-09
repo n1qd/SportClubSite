@@ -132,6 +132,7 @@ export type TranslationKeys =
   | "client.booking.statusRejected"
   | "client.booking.loadFailed"
   | "client.booking.loading"
+  | "client.booking.slotPast"
   // Абонементы
   | "client.subs.title"
   | "client.subs.myActive"
@@ -377,6 +378,7 @@ const ru: Dictionary = {
   "client.booking.statusRejected": "Отклонено",
   "client.booking.loadFailed": "Не удалось загрузить данные",
   "client.booking.loading": "Загрузка данных...",
+  "client.booking.slotPast": "Это время уже прошло. Выберите другой слот.",
 
   "client.subs.title": "Абонементы",
   "client.subs.myActive": "Мои абонементы",
@@ -621,6 +623,7 @@ const en: Dictionary = {
   "client.booking.statusRejected": "Rejected",
   "client.booking.loadFailed": "Failed to load data",
   "client.booking.loading": "Loading data...",
+  "client.booking.slotPast": "This time has already passed. Please pick another slot.",
 
   "client.subs.title": "Memberships",
   "client.subs.myActive": "My memberships",

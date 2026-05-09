@@ -9,11 +9,15 @@ import { getCurrentUser, updateUserContact, getTrainerByUserId, updateTrainer, u
 import { uploadAvatar, avatarPathTrainers } from "@/lib/storage";
 import { changeOwnPassword } from "@/lib/auth-client";
 import type { User, Trainer } from "@/lib/models";
+import { formatRuPhoneInput } from "@/lib/input-masks";
+import { useTranslation } from "@/contexts/LanguageContext";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { Avatar } from "@/components/ui/Avatar";
 
 type Props = AuthedPageProps;
 
 export default function TrainerProfile({ user }: Props) {
+  const { language } = useTranslation();
   const [profile, setProfile] = useState<User | null>(null);
   const [trainerDoc, setTrainerDoc] = useState<Trainer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,7 +41,7 @@ export default function TrainerProfile({ user }: Props) {
         setProfile(u);
         setTrainerDoc(t);
         if (u) {
-          setPhone(u.phone ?? "");
+          setPhone(u.phone ? formatRuPhoneInput(u.phone) : "");
           setEmail(u.email ?? user.email ?? "");
         }
       } catch { /* ignore */ }
@@ -65,7 +69,7 @@ export default function TrainerProfile({ user }: Props) {
       setTrainerDoc((prev) => (prev ? { ...prev, photoUrl: urlToSave } : null));
       setSaved(true);
     } catch (e: any) {
-      setError(e?.message ?? "Не удалось сохранить фото.");
+      setError(toUserFacingMessage(e, language));
     } finally {
       setUploadingPhoto(false);
       inputEl.value = "";
@@ -80,7 +84,7 @@ export default function TrainerProfile({ user }: Props) {
       await updateUserContact(user.uid, phone, email);
       setSaved(true);
     } catch (e: any) {
-      setError(e?.message ?? "Ошибка сохранения");
+      setError(toUserFacingMessage(e, language));
     } finally {
       setSaving(false);
     }
@@ -133,7 +137,13 @@ export default function TrainerProfile({ user }: Props) {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-700">Телефон</label>
-                  <Input value={phone} onChange={(e) => { setPhone(e.target.value); setSaved(false); }} placeholder="+7 (___) ___-__-__" />
+                  <Input
+                    value={phone}
+                    onChange={(e) => { setPhone(formatRuPhoneInput(e.target.value)); setSaved(false); }}
+                    placeholder="+7 (___) ___-__-__"
+                    inputMode="tel"
+                    autoComplete="tel"
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-700">Email</label>
@@ -193,7 +203,7 @@ export default function TrainerProfile({ user }: Props) {
                     setNewPassword("");
                     setConfirmPassword("");
                   } catch (e: unknown) {
-                    setPasswordError(e instanceof Error ? e.message : "Не удалось сменить пароль.");
+                    setPasswordError(toUserFacingMessage(e, language));
                   } finally {
                     setChangingPassword(false);
                   }

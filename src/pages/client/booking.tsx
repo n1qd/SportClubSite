@@ -13,6 +13,8 @@ import {
   createTrainingRequest,
   getTrainingRequests,
   getCurrentUser,
+  buildChatId,
+  sendChatMessage,
 } from "@/lib/db";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 import { onAuthStateChanged } from "firebase/auth";
@@ -24,6 +26,7 @@ import type {
 } from "@/lib/models";
 import { Timestamp } from "firebase/firestore";
 import { useTranslation } from "@/contexts/LanguageContext";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 import type { TranslationKeys } from "@/lib/i18n/translations";
 
 type Props = AuthedPageProps;
@@ -135,7 +138,7 @@ export default function BookingPage({ user }: Props) {
           }
         }
       } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? t("client.booking.loadFailed"));
+        if (!cancelled) setError(toUserFacingMessage(e, language));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -143,7 +146,7 @@ export default function BookingPage({ user }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user.uid, user.email, t]);
+  }, [user.uid, user.email, t, language]);
 
   useEffect(() => {
     if (success) {
@@ -190,9 +193,14 @@ export default function BookingPage({ user }: Props) {
       const dateStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
       if (dateStr === slot.date) bookedHours.add(dt.getHours());
     });
+    const now = new Date();
+    const [sy, sm, sd] = slot.date.split("-").map(Number);
     const result: number[] = [];
     for (let h = startH; h < endH; h++) {
-      if (!bookedHours.has(h)) result.push(h);
+      if (bookedHours.has(h)) continue;
+      const slotStart = new Date(sy, (sm ?? 1) - 1, sd ?? 1, h, 0, 0, 0);
+      if (slotStart.getTime() <= now.getTime()) continue;
+      result.push(h);
     }
     return result;
   }
@@ -229,6 +237,12 @@ export default function BookingPage({ user }: Props) {
       const targetDate = new Date(y, (m ?? 1) - 1, d ?? 1);
       targetDate.setHours(selectedHour, 0, 0, 0);
 
+      if (targetDate.getTime() <= Date.now()) {
+        setError(t("client.booking.slotPast"));
+        setSubmitting(false);
+        return;
+      }
+
       const trainerFullName = [selectedTrainer.lastName, selectedTrainer.firstName]
         .filter(Boolean)
         .join(" ");
@@ -244,6 +258,22 @@ export default function BookingPage({ user }: Props) {
         createdAt: Timestamp.now(),
       });
 
+      const trainerUid = (selectedTrainer.userId ?? selectedTrainer.id).trim();
+      if (trainerUid) {
+        try {
+          const chatId = buildChatId(user.uid, trainerUid);
+          const whenStr = `${formatDateLabel(selectedSlot.date, locale)}, ${String(selectedHour).padStart(2, "0")}:00`;
+          const openMsg =
+            language === "en"
+              ? `Individual workout request with ${trainerFullName}. Time: ${whenStr}.`
+              : `Заявка на индивидуальную тренировку с ${trainerFullName}. Время: ${whenStr}.`;
+          const fullMsg = message.trim() ? `${openMsg}\n\n${message.trim()}` : openMsg;
+          await sendChatMessage(chatId, user.uid, clientName, fullMsg);
+        } catch {
+          /* заявка уже создана */
+        }
+      }
+
       const updated = await getTrainingRequests({ clientId: user.uid });
       setMyRequests(updated);
 
@@ -253,7 +283,7 @@ export default function BookingPage({ user }: Props) {
       setMessage("");
       setStep("MY_REQUESTS");
     } catch (e: any) {
-      setError(e?.message ?? t("client.booking.loadFailed"));
+      setError(toUserFacingMessage(e, language));
     } finally {
       setSubmitting(false);
     }

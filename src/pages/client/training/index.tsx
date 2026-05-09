@@ -12,6 +12,7 @@ import {
 } from "@/lib/db";
 import type { GroupWorkout, TrainingRequest } from "@/lib/models";
 import { useTranslation } from "@/contexts/LanguageContext";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Props = AuthedPageProps;
 
@@ -57,7 +58,7 @@ export default function TrainingPage({ user }: Props) {
       try {
         await reload();
       } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? t("client.training.loadFailed"));
+        if (!cancelled) setError(toUserFacingMessage(e, language));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -65,8 +66,7 @@ export default function TrainingPage({ user }: Props) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.uid]);
+  }, [user.uid, language]);
 
   const now = useMemo(() => new Date(), []);
 
@@ -113,7 +113,7 @@ export default function TrainingPage({ user }: Props) {
       await signUpForWorkout(w.id, user.uid);
       await reload();
     } catch (e: any) {
-      setError(e?.message ?? t("client.training.loadFailed"));
+      setError(toUserFacingMessage(e, language));
     } finally {
       setActionLoadingId(null);
     }
@@ -126,7 +126,7 @@ export default function TrainingPage({ user }: Props) {
       await cancelWorkoutSignUp(w.id, user.uid);
       await reload();
     } catch (e: any) {
-      setError(e?.message ?? t("client.training.loadFailed"));
+      setError(toUserFacingMessage(e, language));
     } finally {
       setActionLoadingId(null);
     }

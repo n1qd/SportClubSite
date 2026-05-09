@@ -124,7 +124,8 @@ export default function ClientDashboard({ user }: Props) {
           setWorkouts(w);
           setApprovedRequests(reqs);
           setFoodSummary(summary);
-          setVisits(gv);
+          const todayK = todayKey();
+          setVisits(gv.filter((v) => v.date <= todayK));
         }
       } catch {
         // soft-ignore: dashboard is non-critical

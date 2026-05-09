@@ -7,14 +7,31 @@ const ROLE_COOKIE = "hsc_role";
 const CSRF_COOKIE = "hsc_csrf";
 const MAX_AGE = 60 * 60 * 24 * 3; // 3 дня
 
-function buildCookie(name: string, value: string, maxAge?: number, httpOnly = true): string {
+function isHttps(req: NextApiRequest): boolean {
+  // Behind proxies (common on hosting) the original scheme is often in x-forwarded-proto.
+  const xfProto = (req.headers["x-forwarded-proto"] ?? "").toString().split(",")[0]?.trim();
+  if (xfProto) return xfProto === "https";
+  const xfSsl = (req.headers["x-forwarded-ssl"] ?? "").toString().toLowerCase();
+  if (xfSsl) return xfSsl === "on";
+  return false;
+}
+
+function buildCookie(
+  req: NextApiRequest,
+  name: string,
+  value: string,
+  maxAge?: number,
+  httpOnly = true
+): string {
   const parts = [
     `${name}=${encodeURIComponent(value)}`,
     "Path=/",
     "SameSite=Lax"
   ];
   if (httpOnly) parts.push("HttpOnly");
-  if (process.env.NODE_ENV === "production") parts.push("Secure");
+  // Only set Secure if the request is actually over HTTPS.
+  // Otherwise browsers will ignore the cookie and SSR auth will fail.
+  if (process.env.NODE_ENV === "production" && isHttps(req)) parts.push("Secure");
   if (maxAge) parts.push(`Max-Age=${maxAge}`);
   return parts.join("; ");
 }
@@ -58,9 +75,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const csrfToken = randomBytes(16).toString("hex");
       const cookies = [
-        buildCookie(TOKEN_COOKIE, idToken, MAX_AGE),
-        buildCookie(ROLE_COOKIE, resolvedRole, MAX_AGE),
-        buildCookie(CSRF_COOKIE, csrfToken, MAX_AGE, false)
+        buildCookie(req, TOKEN_COOKIE, idToken, MAX_AGE),
+        buildCookie(req, ROLE_COOKIE, resolvedRole, MAX_AGE),
+        buildCookie(req, CSRF_COOKIE, csrfToken, MAX_AGE, false)
       ];
       res.setHeader("Set-Cookie", cookies);
       return res.status(200).json({ uid: decoded.uid, role: resolvedRole });
@@ -70,8 +87,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "DELETE") {
+    const secure = process.env.NODE_ENV === "production" && isHttps(req) ? "; Secure" : "";
     const cookies = [TOKEN_COOKIE, ROLE_COOKIE, CSRF_COOKIE].map(
-      (name) => `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`
+      (name) => `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}`
     );
     res.setHeader("Set-Cookie", cookies);
     return res.status(204).end();

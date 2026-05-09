@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { requireAuth, type AuthedPageProps } from "@/lib/ssr-auth";
 import { getNutritionSummary, type DailyNutritionSummary } from "@/lib/db";
 import { useTranslation } from "@/contexts/LanguageContext";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Props = AuthedPageProps;
 
@@ -32,7 +33,7 @@ export default function NutritionPage({ user }: Props) {
         const summary = await getNutritionSummary(user.uid, 30);
         if (!cancelled) setAllSummary(summary);
       } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? t("common.error"));
+        if (!cancelled) setError(toUserFacingMessage(e, language));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -40,7 +41,7 @@ export default function NutritionPage({ user }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user.uid, t]);
+  }, [user.uid, t, language]);
 
   const days = parseInt(range, 10);
 

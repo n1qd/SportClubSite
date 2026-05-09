@@ -8,10 +8,13 @@ import { getAllGroupWorkouts, getAllTrainers, getTrainingRequests, updateGroupWo
 import type { GroupWorkout } from "@/lib/models";
 import { Timestamp } from "firebase/firestore";
 import { Input } from "@/components/ui/Input";
+import { useTranslation } from "@/contexts/LanguageContext";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Props = AuthedPageProps;
 
 export default function TrainerDashboard({ user }: Props) {
+  const { language } = useTranslation();
   const [workouts, setWorkouts] = useState<GroupWorkout[]>([]);
   const [approvedRequests, setApprovedRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +105,7 @@ export default function TrainerDashboard({ user }: Props) {
       setApprovedRequests(reqs);
       closeEditModal();
     } catch (e: unknown) {
-      setEditError(e instanceof Error ? e.message : "Ошибка сохранения");
+      setEditError(toUserFacingMessage(e, language));
     } finally {
       setEditSaving(false);
     }
@@ -138,9 +141,17 @@ export default function TrainerDashboard({ user }: Props) {
           <p className="text-xs text-slate-500">
             Предстоящих на 7 дней: {upcomingMerged.length} (групповые и индивидуальные)
           </p>
-          <Button href="/trainer/requests" size="sm" variant="secondary">
-            Изменить расписание (доступность)
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button href="/trainer/requests" size="sm">
+              Заявки
+            </Button>
+            <Button href="/trainer/messages" size="sm" variant="secondary">
+              Чаты
+            </Button>
+          </div>
+          <p className="text-[10px] text-slate-500">
+            Заявки клиентов и слоты доступности — в разделе «Заявки».
+          </p>
         </Card>
 
         {loading ? (

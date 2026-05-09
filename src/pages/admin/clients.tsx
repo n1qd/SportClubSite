@@ -9,8 +9,11 @@ import { requireAuth, type AuthedPageProps } from "@/lib/ssr-auth";
 import { getAllUsers, updateUserData, deleteUser, getAllSubscriptions, purchaseSubscription, addRevenue } from "@/lib/db";
 import { adminChangeUserPassword } from "@/lib/auth-client";
 import type { User, UserRole } from "@/lib/models";
+import { formatRuDateInput, formatRuPhoneInput } from "@/lib/input-masks";
 import type { Subscription } from "@/lib/models";
 import { Timestamp } from "firebase/firestore";
+import { useTranslation } from "@/contexts/LanguageContext";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Props = AuthedPageProps;
 type SortField = "name" | "role" | "email";
@@ -30,6 +33,7 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 export default function AdminClients(_props: Props) {
+  const { language } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<SortField>("name");
@@ -50,7 +54,7 @@ export default function AdminClients(_props: Props) {
 
   async function load() {
     setLoading(true);
-    try { setUsers(await getAllUsers()); } catch (e: any) { setError(e?.message); }
+    try { setUsers(await getAllUsers()); } catch (e: any) { setError(toUserFacingMessage(e, language)); }
     finally { setLoading(false); }
   }
 
@@ -95,7 +99,7 @@ export default function AdminClients(_props: Props) {
     try {
       await deleteUser(uid);
       setUsers((prev) => prev.filter((u) => u.id !== uid));
-    } catch (e: any) { setError(e?.message ?? "Не удалось удалить"); }
+    } catch (e: any) { setError(toUserFacingMessage(e, language)); }
   }
 
   async function handleAddSubscription(client: User, sub: Subscription) {
@@ -111,7 +115,7 @@ export default function AdminClients(_props: Props) {
       });
       setAddSubToUser(null);
     } catch (e: any) {
-      setError(e?.message ?? "Не удалось добавить абонемент");
+      setError(toUserFacingMessage(e, language));
     } finally {
       setAddingSubId(null);
     }
@@ -133,7 +137,7 @@ export default function AdminClients(_props: Props) {
       });
       setUsers((prev) => prev.map((u) => (u.id === editing.id ? editing : u)));
       setEditing(null);
-    } catch (e: any) { setError(e?.message ?? "Ошибка сохранения"); }
+    } catch (e: any) { setError(toUserFacingMessage(e, language)); }
     finally { setSavingId(null); }
   }
 
@@ -225,7 +229,19 @@ export default function AdminClients(_props: Props) {
                     )}
                     {canEditUser(u.role) ? (
                       <>
-                        <Button size="sm" variant="ghost" onClick={() => setEditing({ ...u })}>Изменить</Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setEditing({
+                              ...u,
+                              phone: u.phone ? formatRuPhoneInput(u.phone) : "",
+                              birthDate: u.birthDate ? formatRuDateInput(u.birthDate) : "",
+                            })
+                          }
+                        >
+                          Изменить
+                        </Button>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -281,13 +297,24 @@ export default function AdminClients(_props: Props) {
                 </div>
                 <div>
                   <label className="text-[10px] text-slate-600">Телефон</label>
-                  <Input value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} />
+                  <Input
+                    value={editing.phone}
+                    onChange={(e) => setEditing({ ...editing, phone: formatRuPhoneInput(e.target.value) })}
+                    inputMode="tel"
+                    autoComplete="tel"
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-slate-600">Дата рождения</label>
-                  <Input value={editing.birthDate} onChange={(e) => setEditing({ ...editing, birthDate: e.target.value })} placeholder="ДД.ММ.ГГГГ" />
+                  <Input
+                    value={editing.birthDate}
+                    onChange={(e) => setEditing({ ...editing, birthDate: formatRuDateInput(e.target.value) })}
+                    placeholder="ДД.ММ.ГГГГ"
+                    maxLength={10}
+                    inputMode="numeric"
+                  />
                 </div>
                 <div>
                   <label className="text-[10px] text-slate-600">Пол</label>

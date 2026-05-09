@@ -16,6 +16,7 @@ import {
 import type { Chat, ChatMessage } from "@/lib/models";
 import { Avatar } from "@/components/ui/Avatar";
 import { useTranslation } from "@/contexts/LanguageContext";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Props = AuthedPageProps;
 
@@ -92,6 +93,7 @@ export default function MessagesPage({ user }: Props) {
 
   const [mobileShowChat, setMobileShowChat] = useState(false);
   const [otherPhotos, setOtherPhotos] = useState<Record<string, string>>({});
+  const [otherDisplayNames, setOtherDisplayNames] = useState<Record<string, string>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -110,6 +112,7 @@ export default function MessagesPage({ user }: Props) {
         });
         setChats(sorted);
         const photos: Record<string, string> = {};
+        const names: Record<string, string> = {};
         await Promise.all(
           sorted.map(async (chat) => {
             const otherId = getOtherId(chat, user.uid);
@@ -117,20 +120,32 @@ export default function MessagesPage({ user }: Props) {
             const trainer = await getTrainerByUserId(otherId);
             if (cancelled) return;
             let url = trainer?.photoUrl;
-            if (!url) {
+            let display =
+              trainer &&
+              [trainer.lastName, trainer.firstName, trainer.middleName].filter(Boolean).join(" ").trim();
+            if (!display) {
               try {
                 const otherUser = await getCurrentUser(otherId);
-                if (!cancelled) url = otherUser?.photoUrl;
+                if (!cancelled) {
+                  if (!url) url = otherUser?.photoUrl;
+                  display =
+                    otherUser &&
+                    [otherUser.lastName, otherUser.firstName, otherUser.middleName].filter(Boolean).join(" ").trim();
+                }
               } catch {
                 /* ignore */
               }
             }
             if (url) photos[chat.id] = url;
+            if (display) names[chat.id] = display;
           })
         );
-        if (!cancelled) setOtherPhotos((prev) => ({ ...prev, ...photos }));
+        if (!cancelled) {
+          setOtherPhotos((prev) => ({ ...prev, ...photos }));
+          setOtherDisplayNames((prev) => ({ ...prev, ...names }));
+        }
       } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? t("client.messages.loadFailed"));
+        if (!cancelled) setError(toUserFacingMessage(e, language));
       } finally {
         if (!cancelled) setLoadingChats(false);
       }
@@ -138,7 +153,7 @@ export default function MessagesPage({ user }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user.uid, t]);
+  }, [user.uid, t, language]);
 
   useEffect(() => {
     if (!selectedChatId) {
@@ -196,7 +211,7 @@ export default function MessagesPage({ user }: Props) {
         })
       );
     } catch (e: any) {
-      setError(e?.message ?? t("client.messages.loadFailed"));
+      setError(toUserFacingMessage(e, language));
       setInputText(text);
     } finally {
       setSending(false);
@@ -224,9 +239,20 @@ export default function MessagesPage({ user }: Props) {
 
   const selectedChat = chats.find((c) => c.id === selectedChatId);
 
+  function peerLabel(chat: Chat): string {
+    return (
+      otherDisplayNames[chat.id] ||
+      getOtherName(chat, user.uid, t("client.messages.peer"))
+    );
+  }
+
+  /** Фиксированная высота области чатов (список + переписка), чтобы вёрстка не «прыгала». */
+  const chatBlockClass =
+    "min-h-[380px] h-[min(72vh,620px)] max-h-[620px] md:h-[560px]";
+
   return (
     <ClientLayout title={t("client.messages.title")}>
-      <div className="flex h-full flex-col gap-4 overflow-hidden">
+      <div className="flex flex-col gap-4 overflow-hidden">
         <Card className="space-y-1">
           <h2 className="text-sm font-semibold text-hsc-panel">{t("client.messages.title")}</h2>
           <p className="text-xs text-slate-700">
@@ -253,19 +279,19 @@ export default function MessagesPage({ user }: Props) {
             </Button>
           </Card>
         ) : (
-          <div className="flex flex-1 min-h-0 gap-3">
+          <div className={`flex min-h-0 gap-3 ${chatBlockClass}`}>
             <div
-              className={`w-full md:w-1/3 flex-shrink-0 ${
+              className={`w-full md:w-1/3 flex-shrink-0 h-full min-h-0 ${
                 mobileShowChat ? "hidden md:block" : "block"
               }`}
             >
-              <Card className="h-full flex min-h-0 flex-col space-y-1 p-3">
+              <Card className="h-full flex min-h-0 flex-col space-y-1 p-3 overflow-hidden">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 px-1">
                   {t("client.messages.chats")} ({chats.length})
                 </p>
                 <div className="flex-1 space-y-0.5 overflow-y-auto">
                   {chats.map((chat) => {
-                    const otherName = getOtherName(chat, user.uid, t("client.messages.peer"));
+                    const otherName = peerLabel(chat);
                     const isActive = chat.id === selectedChatId;
                     return (
                       <button
@@ -323,7 +349,7 @@ export default function MessagesPage({ user }: Props) {
             </div>
 
             <div
-              className={`flex-1 min-w-0 ${
+              className={`flex-1 min-w-0 min-h-0 h-full ${
                 !mobileShowChat ? "hidden md:flex" : "flex"
               } flex-col`}
             >
@@ -337,8 +363,8 @@ export default function MessagesPage({ user }: Props) {
                   </div>
                 </Card>
               ) : (
-                <Card className="flex-1 flex flex-col p-0 overflow-hidden">
-                  <div className="flex items-center gap-2 border-b border-emerald-900/10 px-4 py-3">
+                <Card className="flex-1 flex min-h-0 flex-col p-0 overflow-hidden h-full">
+                  <div className="flex items-center gap-2 border-b border-emerald-900/10 px-4 py-3 shrink-0">
                     <button
                       onClick={goBackToList}
                       className="md:hidden rounded-lg p-1 text-slate-500 hover:bg-emerald-50 hover:text-hsc-panel transition-colors"
@@ -347,14 +373,12 @@ export default function MessagesPage({ user }: Props) {
                     </button>
                     <Avatar
                       photoUrl={selectedChat ? otherPhotos[selectedChat.id] : undefined}
-                      name={selectedChat ? getOtherName(selectedChat, user.uid, t("client.messages.peer")) : undefined}
+                      name={selectedChat ? peerLabel(selectedChat) : undefined}
                       size="sm"
                     />
-                    <div>
-                      <div className="text-sm font-semibold text-hsc-panel">
-                        {selectedChat
-                          ? getOtherName(selectedChat, user.uid, t("client.messages.peer"))
-                          : t("client.messages.peer")}
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-hsc-panel truncate">
+                        {selectedChat ? peerLabel(selectedChat) : t("client.messages.peer")}
                       </div>
                       <div className="text-[10px] text-slate-500">
                         {t("client.messages.individual")}

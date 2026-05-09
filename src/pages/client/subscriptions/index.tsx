@@ -9,6 +9,7 @@ import {
 } from "@/lib/db";
 import type { Subscription, UserSubscription } from "@/lib/models";
 import { useTranslation } from "@/contexts/LanguageContext";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Props = AuthedPageProps;
 
@@ -57,13 +58,13 @@ export default function SubscriptionsPage({ user }: Props) {
           setMine(m);
         }
       } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? t("client.subs.loadFailed"));
+        if (!cancelled) setError(toUserFacingMessage(e, language));
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [user.uid, t]);
+  }, [user.uid, t, language]);
 
   useEffect(() => {
     if (success) {

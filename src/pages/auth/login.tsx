@@ -12,8 +12,11 @@ import {
   registerSchema,
   type RegisterFormValues
 } from "@/lib/validation/auth";
+import { formatRuDateInput } from "@/lib/input-masks";
 import { useAuth } from "@/hooks/useAuth";
 import { roleToRedirect } from "@/contexts/AuthContext";
+import { useTranslation } from "@/contexts/LanguageContext";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Mode = "login" | "register";
 
@@ -23,6 +26,7 @@ export default function AuthPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { login, register: registerUser } = useAuth();
+  const { language } = useTranslation();
 
   // Если в URL ?mode=register — показать регистрацию
   useEffect(() => {
@@ -51,6 +55,8 @@ export default function AuthPage() {
     }
   });
 
+  const birthDateField = registerForm.register("birthDate");
+
   const handleLoginSubmit = loginForm.handleSubmit(async (values) => {
     setError(null);
     setLoading(true);
@@ -60,7 +66,7 @@ export default function AuthPage() {
       const from = router.query.from as string | undefined;
       window.location.href = from || roleToRedirect(role);
     } catch (e: any) {
-      setError(e?.message ?? "Ошибка входа");
+      setError(toUserFacingMessage(e, language));
     } finally {
       setLoading(false);
     }
@@ -82,7 +88,7 @@ export default function AuthPage() {
       });
       window.location.href = "/client/dashboard";
     } catch (e: any) {
-      setError(e?.message ?? "Ошибка регистрации");
+      setError(toUserFacingMessage(e, language));
     } finally {
       setLoading(false);
     }
@@ -153,8 +159,19 @@ export default function AuthPage() {
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Дата рождения</label>
                 <Input
-                  {...registerForm.register("birthDate")}
+                  ref={birthDateField.ref}
+                  name={birthDateField.name}
+                  onBlur={birthDateField.onBlur}
+                  value={registerForm.watch("birthDate")}
+                  onChange={(e) =>
+                    registerForm.setValue("birthDate", formatRuDateInput(e.target.value), {
+                      shouldValidate: true,
+                      shouldDirty: true,
+                    })
+                  }
                   placeholder="ДД.ММ.ГГГГ"
+                  maxLength={10}
+                  inputMode="numeric"
                   error={registerForm.formState.errors.birthDate?.message}
                 />
               </div>

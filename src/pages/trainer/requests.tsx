@@ -14,6 +14,8 @@ import {
   getCurrentUser,
 } from "@/lib/db";
 import type { TrainingRequest, TrainerAvailability } from "@/lib/models";
+import { useTranslation } from "@/contexts/LanguageContext";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Props = AuthedPageProps;
 type Tab = "requests" | "availability";
@@ -44,6 +46,7 @@ function formatDateRu(date: string): string {
 }
 
 export default function TrainerRequests({ user }: Props) {
+  const { language } = useTranslation();
   const [tab, setTab] = useState<Tab>("requests");
   const [requests, setRequests] = useState<TrainingRequest[]>([]);
   const [availability, setAvailability] = useState<TrainerAvailability[]>([]);
@@ -105,7 +108,7 @@ export default function TrainerRequests({ user }: Props) {
       setAvailability(fresh);
       setSuccess("Слот добавлен");
     } catch (e: any) {
-      setSaveError(e?.message ?? "Не удалось сохранить слот");
+      setSaveError(toUserFacingMessage(e, language));
     } finally {
       setSavingSlot(false);
     }
