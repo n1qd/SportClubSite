@@ -8,6 +8,68 @@
   --hsc-panel: #024E1C;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Лендинг: мягкий snap секций при прокрутке (класс вешается с страницы) */
+html.landing-snap-page {
+  scroll-snap-type: y proximity;
+  scroll-padding-top: 4.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.landing-snap-page {
+    scroll-snap-type: none;
+    scroll-padding-top: 0;
+  }
+}
+
+.landing-snap-section {
+  scroll-snap-align: start;
+}
+
+/* Snap только от планшета и выше — на телефоне мешает естественному скроллу */
+@media (max-width: 639px) {
+  html.landing-snap-page {
+    scroll-snap-type: none;
+    scroll-padding-top: 0;
+  }
+
+  .landing-snap-section {
+    scroll-snap-align: none;
+  }
+}
+
+.landing-section-bleed {
+  position: relative;
+}
+
+.landing-section-bleed::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: min(72rem, 100vw);
+  height: 1px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(2, 78, 28, 0.18),
+    rgba(16, 185, 129, 0.35),
+    rgba(2, 78, 28, 0.18),
+    transparent
+  );
+  pointer-events: none;
+}
+
 body {
   @apply bg-[color:var(--hsc-back)] text-slate-900;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -23,5 +85,437 @@ a {
 
 .panel-main {
   @apply rounded-2xl bg-[color:var(--hsc-panel)] text-white shadow-lg;
+}
+
+/* ——— Лендинг: анимации (уважение к prefers-reduced-motion) ——— */
+@keyframes landing-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes landing-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes landing-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(3%, -4%) scale(1.04);
+  }
+  66% {
+    transform: translate(-2%, 2%) scale(0.98);
+  }
+}
+
+@keyframes landing-blob {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translate(8%, 5%) scale(1.12);
+    opacity: 0.55;
+  }
+}
+
+@keyframes landing-shine {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes landing-pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(2, 78, 28, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 32px 4px rgba(2, 78, 28, 0.2);
+  }
+}
+
+.landing-anim-fade-up {
+  opacity: 0;
+  animation: landing-fade-up 0.75s ease-out forwards;
+}
+
+.landing-anim-fade-in {
+  opacity: 0;
+  animation: landing-fade-in 0.9s ease-out forwards;
+}
+
+.landing-delay-1 {
+  animation-delay: 0.1s;
+}
+.landing-delay-2 {
+  animation-delay: 0.2s;
+}
+.landing-delay-3 {
+  animation-delay: 0.35s;
+}
+.landing-delay-4 {
+  animation-delay: 0.5s;
+}
+.landing-delay-5 {
+  animation-delay: 0.65s;
+}
+.landing-delay-6 {
+  animation-delay: 0.8s;
+}
+
+.landing-hero-blob {
+  animation: landing-blob 18s ease-in-out infinite;
+}
+
+.landing-hero-blob-slow {
+  animation: landing-float 22s ease-in-out infinite;
+}
+
+.landing-shine-text {
+  background: linear-gradient(
+    90deg,
+    #024e1c 0%,
+    #059669 25%,
+    #10b981 50%,
+    #059669 75%,
+    #024e1c 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: landing-shine 5s ease-in-out infinite;
+}
+
+.landing-icon-pulse {
+  animation: landing-pulse-glow 2.8s ease-in-out infinite;
+}
+
+.landing-card-lift {
+  transition: transform 0.35s ease, box-shadow 0.35s ease, border-color 0.35s ease;
+}
+.landing-card-lift:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 20px 40px -20px rgba(2, 78, 28, 0.25);
+}
+
+.landing-stat-pop {
+  transition: transform 0.3s ease;
+}
+.landing-stat-pop:hover {
+  transform: scale(1.04);
+}
+
+/* Карточка абонемента — ссылка */
+.landing-plan-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  outline: none;
+  transition:
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.45s ease,
+    filter 0.35s ease;
+}
+
+.landing-plan-link:focus-visible {
+  box-shadow:
+    0 0 0 3px rgba(245, 244, 230, 0.9),
+    0 0 0 6px rgba(2, 78, 28, 0.55);
+}
+
+.landing-plan-link .landing-plan-shine {
+  position: absolute;
+  inset: -40% -60%;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.2) 50%,
+    transparent 60%
+  );
+  transform: translateX(-100%) rotate(12deg);
+  transition: transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.landing-plan-link:hover .landing-plan-shine,
+.landing-plan-link:focus-visible .landing-plan-shine {
+  transform: translateX(100%) rotate(12deg);
+}
+
+.landing-plan-link .landing-plan-cta {
+  opacity: 0.75;
+  transform: translateY(4px);
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.landing-plan-link:hover .landing-plan-cta,
+.landing-plan-link:focus-visible .landing-plan-cta {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.landing-hero-parallax-layer {
+  transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-parallax-layer {
+    transition: none;
+  }
+  .landing-plan-link .landing-plan-shine {
+    display: none;
+  }
+}
+
+@keyframes landing-scroll-dot {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(6px);
+    opacity: 0.35;
+  }
+}
+
+.landing-scroll-mouse-dot {
+  animation: landing-scroll-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes landing-cta-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 25px 50px -12px rgba(2, 78, 28, 0.38),
+      0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+  50% {
+    box-shadow:
+      0 30px 58px -10px rgba(2, 78, 28, 0.48),
+      0 0 0 1px rgba(255, 255, 255, 0.09);
+  }
+}
+
+.landing-cta-box {
+  animation: landing-cta-glow 6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-scroll-mouse-dot,
+  .landing-cta-box {
+    animation: none !important;
+  }
+  .landing-anim-fade-up,
+  .landing-anim-fade-in,
+  .landing-hero-blob,
+  .landing-hero-blob-slow,
+  .landing-shine-text,
+  .landing-icon-pulse {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .landing-shine-text {
+    color: #024e1c;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+  }
+  .landing-card-lift:hover,
+  .landing-stat-pop:hover {
+    transform: none;
+  }
+}
+
+/* ——— Скролл-переходы секций (Reveal) ——— */
+.sr-base {
+  opacity: 0;
+  transition:
+    opacity 0.95s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.95s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.85s ease;
+  will-change: opacity, transform, filter;
+}
+
+.sr-v-up {
+  transform: translate3d(0, 48px, 0);
+}
+.sr-v-down {
+  transform: translate3d(0, -40px, 0);
+}
+.sr-h-left {
+  transform: translate3d(-52px, 0, 0);
+}
+.sr-h-right {
+  transform: translate3d(52px, 0, 0);
+}
+.sr-zoom {
+  transform: scale(0.94);
+}
+.sr-blur {
+  transform: scale(0.97);
+  filter: blur(8px);
+}
+.sr-tilt {
+  transform: translate3d(0, 36px, 0) perspective(900px) rotateX(8deg);
+  transform-origin: center bottom;
+}
+
+.sr-pop {
+  transform: translate3d(0, 40px, 0) scale(0.92);
+}
+
+.sr-base.sr-in {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1) perspective(900px) rotateX(0deg);
+  filter: none;
+}
+
+/* Телефон: горизонтальные слайды → мягкий подъём */
+@media (max-width: 1023px) {
+  .sr-h-left:not(.sr-in) {
+    transform: translate3d(0, 36px, 0);
+  }
+  .sr-h-right:not(.sr-in) {
+    transform: translate3d(0, 36px, 0);
+  }
+}
+
+@media (max-width: 639px) {
+  .sr-v-up:not(.sr-in) {
+    transform: translate3d(0, 32px, 0);
+  }
+  .sr-blur:not(.sr-in) {
+    filter: blur(5px);
+  }
+}
+
+/* Каскад: заголовок + сетка */
+.sr-stagger-root:not(.sr-in) .sr-block {
+  opacity: 0;
+  transform: translate3d(0, 40px, 0);
+  transition:
+    opacity 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sr-stagger-root:not(.sr-in) .sr-stagger > * {
+  opacity: 0;
+  transform: translate3d(0, 36px, 0);
+  will-change: opacity, transform;
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s ease;
+}
+
+.sr-stagger-root.sr-in .sr-block {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.sr-stagger-root.sr-in .sr-stagger > * {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(1) {
+  transition-delay: 0.06s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(2) {
+  transition-delay: 0.12s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(3) {
+  transition-delay: 0.18s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(4) {
+  transition-delay: 0.24s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(5) {
+  transition-delay: 0.3s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(6) {
+  transition-delay: 0.36s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(7) {
+  transition-delay: 0.42s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(8) {
+  transition-delay: 0.48s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(9) {
+  transition-delay: 0.54s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(10) {
+  transition-delay: 0.6s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(11) {
+  transition-delay: 0.66s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(12) {
+  transition-delay: 0.72s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(13) {
+  transition-delay: 0.78s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(14) {
+  transition-delay: 0.84s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(15) {
+  transition-delay: 0.9s;
+}
+.sr-stagger-root.sr-in .sr-stagger > *:nth-child(16) {
+  transition-delay: 0.96s;
+}
+
+/* Линия под заголовком секции */
+.sr-head-line {
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sr-stagger-root.sr-in .sr-head-line,
+.sr-base.sr-in .sr-head-line {
+  transform: scaleX(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sr-base,
+  .sr-stagger-root:not(.sr-in) .sr-block,
+  .sr-stagger-root:not(.sr-in) .sr-stagger > * {
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+  .sr-base.sr-in,
+  .sr-stagger-root.sr-in {
+    opacity: 1 !important;
+  }
+  .sr-head-line {
+    transform: scaleX(1) !important;
+  }
 }
 

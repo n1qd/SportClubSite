@@ -20,6 +20,19 @@ import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Mode = "login" | "register";
 
+const PLAN_LABELS: Record<string, string> = {
+  basic: "Базовый",
+  standard: "Стандарт",
+  premium: "Премиум",
+  "vip-year": "VIP Годовой"
+};
+
+function planFromQuery(raw: string | string[] | undefined): string | undefined {
+  if (!raw) return undefined;
+  const key = Array.isArray(raw) ? raw[0] : raw;
+  return PLAN_LABELS[key] ? key : undefined;
+}
+
 export default function AuthPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("login");
@@ -27,6 +40,8 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const { login, register: registerUser } = useAuth();
   const { language } = useTranslation();
+  const planKey = planFromQuery(router.query.plan);
+  const selectedPlanName = planKey ? PLAN_LABELS[planKey] : undefined;
 
   // Если в URL ?mode=register — показать регистрацию
   useEffect(() => {
@@ -121,6 +136,17 @@ export default function AuthPage() {
             Регистрация
           </button>
         </div>
+
+        {mode === "register" && selectedPlanName && (
+          <div
+            className="rounded-xl border border-emerald-800/15 bg-emerald-50/90 px-3 py-2.5 text-xs leading-relaxed text-emerald-950"
+            role="status"
+          >
+            Выбран тариф: <span className="font-bold">{selectedPlanName}</span>.
+            Завершите регистрацию — дальнейшее оформление абонемента будет в личном
+            кабинете.
+          </div>
+        )}
 
         <form
           onSubmit={mode === "login" ? handleLoginSubmit : handleRegisterSubmit}

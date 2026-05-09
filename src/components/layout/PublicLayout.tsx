@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import Link from "next/link";
 import { BaseLayout } from "./BaseLayout";
 import { Card } from "../ui/Card";
 
@@ -10,7 +11,16 @@ interface PublicLayoutProps {
 export function PublicLayout({ title, children }: PublicLayoutProps) {
   return (
     <BaseLayout title={title}>
-      <div className="flex flex-1 flex-col items-center justify-center">
+      <div className="flex w-full flex-1 flex-col items-center justify-center">
+        <div className="mb-2 w-full max-w-md">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-hsc-panel no-underline transition-colors hover:bg-emerald-100/80"
+          >
+            <span aria-hidden>←</span>
+            На главную
+          </Link>
+        </div>
         <div className="w-full max-w-md space-y-6">
           <div className="flex flex-col items-center space-y-3">
             <div className="panel-main flex h-28 w-28 items-center justify-center rounded-2xl">
