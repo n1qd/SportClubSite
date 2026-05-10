@@ -35,6 +35,14 @@ export function formatRuPhoneInput(raw: string): string {
 }
 
 /**
+ * Вариант для controlled input: принимает предыдущее значение и новое.
+ * Сейчас логика форматирования не зависит от `prev`, но сигнатура нужна для удобства вызовов.
+ */
+export function formatRuPhoneInputWithPrev(_prev: string, next: string): string {
+  return formatRuPhoneInput(next);
+}
+
+/**
  * Маска даты ДД.ММ.ГГГГ: точки ставятся автоматически, только цифры.
  */
 export function formatRuDateInput(raw: string): string {

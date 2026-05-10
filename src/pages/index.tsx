@@ -86,9 +86,9 @@ export default function LandingPage() {
       </Head>
 
       <LandingScrollSnap>
-      <div className="min-h-screen bg-[color:var(--hsc-back)] text-slate-900">
+      <div className="min-h-screen bg-[color:var(--hsc-back)] text-slate-900 dark:text-slate-100">
         {/* Header */}
-        <header className="sticky top-0 z-50 border-b border-emerald-900/10 bg-[color:var(--hsc-back)]/90 backdrop-blur-md transition-shadow duration-300 hover:shadow-sm">
+        <header className="sticky top-0 z-50 border-b border-emerald-900/10 bg-[color:var(--hsc-back)]/90 backdrop-blur-md transition-shadow duration-300 hover:shadow-sm dark:border-white/10">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
             <Link href="/" className="group flex items-center gap-2 no-underline">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[color:var(--hsc-panel)] text-white shadow-md transition-transform duration-300 group-hover:scale-105 group-hover:shadow-lg">
@@ -159,16 +159,16 @@ export default function LandingPage() {
                     </Link>
                   </div>
                   <p
-                    className="landing-anim-fade-up landing-delay-4 mt-10 text-xs font-medium uppercase tracking-[0.35em] text-emerald-800/50"
+                    className="landing-anim-fade-up landing-delay-4 mt-10 text-xs font-medium uppercase tracking-[0.35em] text-emerald-800/50 dark:text-emerald-200/60"
                     aria-hidden
                   >
                     Листайте вниз
                   </p>
                   <div
-                    className="landing-anim-fade-up landing-delay-5 mx-auto mt-3 h-8 w-5 rounded-full border-2 border-emerald-900/25 p-1"
+                    className="landing-anim-fade-up landing-delay-5 mx-auto mt-3 h-8 w-5 rounded-full border-2 border-emerald-900/25 p-1 dark:border-white/25"
                     aria-hidden
                   >
-                    <div className="landing-scroll-mouse-dot mx-auto h-1.5 w-1.5 rounded-full bg-emerald-700/70" />
+                    <div className="landing-scroll-mouse-dot mx-auto h-1.5 w-1.5 rounded-full bg-emerald-700/70 dark:bg-emerald-300/70" />
                   </div>
                 </div>
               </div>
@@ -179,7 +179,7 @@ export default function LandingPage() {
         {/* Features */}
         <section
           id="features"
-          className="landing-snap-section landing-section-bleed border-t border-emerald-900/10 bg-white/50"
+          className="landing-snap-section landing-section-bleed border-t border-emerald-900/10 bg-white/50 dark:bg-emerald-950/40"
         >
           <Reveal staggerRoot className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
             <div className="sr-block mx-auto max-w-xl text-center">

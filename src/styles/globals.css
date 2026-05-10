@@ -8,6 +8,13 @@
   --hsc-panel: #024E1C;
 }
 
+html.dark {
+  color-scheme: dark;
+  --hsc-back: #0e1612;
+  --hsc-surface: #1e2d24;
+  --hsc-panel: #0d7a4d;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -71,12 +78,47 @@ html.landing-snap-page {
 }
 
 body {
-  @apply bg-[color:var(--hsc-back)] text-slate-900;
+  @apply bg-[color:var(--hsc-back)] text-slate-900 dark:text-slate-100;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 a {
-  @apply text-hsc-panel underline-offset-2 hover:underline;
+  @apply text-hsc-panel underline-offset-2 hover:underline dark:text-emerald-300 dark:hover:text-emerald-200;
+}
+
+@layer components {
+  html.dark .text-slate-800 {
+    @apply text-slate-200;
+  }
+  html.dark .text-slate-700 {
+    @apply text-slate-300;
+  }
+  html.dark .text-slate-600 {
+    @apply text-slate-400;
+  }
+  html.dark .text-slate-500 {
+    @apply text-slate-400;
+  }
+
+  /* Переопределения “светлых” утилит в dark-режиме (чтобы не слепило) */
+  html.dark .bg-white {
+    @apply bg-[color:var(--hsc-surface)];
+  }
+  html.dark .bg-white\/50 {
+    @apply bg-emerald-950/40;
+  }
+  html.dark .bg-emerald-50 {
+    @apply bg-emerald-900/25;
+  }
+  html.dark .hover\:bg-emerald-50:hover {
+    @apply bg-emerald-900/25;
+  }
+  html.dark .hover\:bg-emerald-100:hover {
+    @apply bg-emerald-900/35;
+  }
+  html.dark .border-emerald-900\/10 {
+    @apply border-white/10;
+  }
 }
 
 .card-surface {

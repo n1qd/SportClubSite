@@ -23,11 +23,11 @@ const sizeClasses: Record<Size, string> = {
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-hsc-panel text-white hover:bg-emerald-900 shadow-sm ring-offset-[color:var(--hsc-back)]",
+    "bg-hsc-panel text-white hover:bg-emerald-900 dark:hover:bg-emerald-700 shadow-sm ring-offset-[color:var(--hsc-back)]",
   secondary:
-    "bg-[color:var(--hsc-surface)] text-slate-900 hover:bg-emerald-100 ring-offset-[color:var(--hsc-back)]",
+    "bg-[color:var(--hsc-surface)] text-slate-900 hover:bg-emerald-100 dark:text-slate-100 dark:hover:bg-emerald-900/35 ring-offset-[color:var(--hsc-back)]",
   ghost:
-    "bg-transparent text-hsc-panel hover:bg-emerald-50 ring-offset-[color:var(--hsc-back)]"
+    "bg-transparent text-hsc-panel hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/25 ring-offset-[color:var(--hsc-back)]"
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(

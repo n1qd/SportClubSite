@@ -19,7 +19,7 @@ import type { User, UserSubscription, Trainer, Language } from "@/lib/models";
 import { Avatar } from "@/components/ui/Avatar";
 import { useTranslation } from "@/contexts/LanguageContext";
 import type { TranslationKeys } from "@/lib/i18n/translations";
-import { formatRuPhoneInput } from "@/lib/input-masks";
+import { formatRuPhoneInput, formatRuPhoneInputWithPrev } from "@/lib/input-masks";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Props = AuthedPageProps;
@@ -49,6 +49,21 @@ function computeBMI(weight?: number, height?: number): string {
   if (!weight || !height || height < 1) return "—";
   const h = height / 100;
   return (weight / (h * h)).toFixed(1);
+}
+
+function bmiMeta(
+  bmiStr: string,
+  t: (key: TranslationKeys) => string
+): { status: string; hint: string } | null {
+  const v = Number.parseFloat(bmiStr);
+  if (!Number.isFinite(v)) return null;
+
+  if (v < 18.5) return { status: t("client.profile.bmi.status.underweight"), hint: t("client.profile.bmi.hint.underweight") };
+  if (v < 25) return { status: t("client.profile.bmi.status.normal"), hint: t("client.profile.bmi.hint.normal") };
+  if (v < 30) return { status: t("client.profile.bmi.status.overweight"), hint: t("client.profile.bmi.hint.overweight") };
+  if (v < 35) return { status: t("client.profile.bmi.status.obesity1"), hint: t("client.profile.bmi.hint.obesity1") };
+  if (v < 40) return { status: t("client.profile.bmi.status.obesity2"), hint: t("client.profile.bmi.hint.obesity2") };
+  return { status: t("client.profile.bmi.status.obesity3"), hint: t("client.profile.bmi.hint.obesity3") };
 }
 
 function computeAge(birthDate: string): number {
@@ -229,6 +244,7 @@ export default function ProfilePage({ user }: Props) {
     Number.isFinite(wParsed) && wParsed > 0 ? wParsed : profile?.weight,
     Number.isFinite(hParsed) && hParsed > 0 ? hParsed : profile?.height
   );
+  const bmiInfo = bmiMeta(bmi, t);
   const weightDisplay = !profile
     ? "—"
     : weight !== "" && Number.isFinite(wParsed) && wParsed > 0
@@ -349,7 +365,7 @@ export default function ProfilePage({ user }: Props) {
                   <label className="mb-1 block text-xs font-medium text-slate-700">{t("client.profile.phone")}</label>
                   <Input
                     value={phone}
-                    onChange={(e) => setPhone(formatRuPhoneInput(e.target.value))}
+                    onChange={(e) => setPhone((prev) => formatRuPhoneInputWithPrev(prev, e.target.value))}
                     placeholder="+7 (___) ___-__-__"
                     inputMode="tel"
                     autoComplete="tel"
@@ -371,6 +387,12 @@ export default function ProfilePage({ user }: Props) {
                     <div>
                       <div className="text-[11px] text-emerald-100">{t("client.profile.bmi")}</div>
                       <div className="text-2xl font-black">{bmi}</div>
+                      {bmiInfo && (
+                        <div className="mt-1 space-y-0.5">
+                          <div className="text-[11px] font-semibold text-emerald-50">{bmiInfo.status}</div>
+                          <div className="text-[10px] text-emerald-100">{bmiInfo.hint}</div>
+                        </div>
+                      )}
                     </div>
                     <div className="text-right text-[11px]">
                       <div className="text-emerald-100">{t("client.profile.weightKg")}: {weightDisplay}</div>

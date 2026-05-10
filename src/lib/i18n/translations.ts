@@ -31,6 +31,8 @@ export type TranslationKeys =
   | "common.carbs"
   | "common.duration"
   | "common.trainer"
+  | "common.themeDark"
+  | "common.themeLight"
   // Навигация клиента
   | "client.nav.home"
   | "client.nav.training"
@@ -201,6 +203,18 @@ export type TranslationKeys =
   | "client.profile.healthSaved"
   | "client.profile.healthHeader"
   | "client.profile.bmi"
+  | "client.profile.bmi.status.underweight"
+  | "client.profile.bmi.status.normal"
+  | "client.profile.bmi.status.overweight"
+  | "client.profile.bmi.status.obesity1"
+  | "client.profile.bmi.status.obesity2"
+  | "client.profile.bmi.status.obesity3"
+  | "client.profile.bmi.hint.underweight"
+  | "client.profile.bmi.hint.normal"
+  | "client.profile.bmi.hint.overweight"
+  | "client.profile.bmi.hint.obesity1"
+  | "client.profile.bmi.hint.obesity2"
+  | "client.profile.bmi.hint.obesity3"
   | "client.profile.weightKg"
   | "client.profile.heightCm"
   | "client.profile.gender"
@@ -276,6 +290,8 @@ const ru: Dictionary = {
   "common.carbs": "углев.",
   "common.duration": "Длительность",
   "common.trainer": "Тренер",
+  "common.themeDark": "Тёмная тема",
+  "common.themeLight": "Светлая тема",
   "common.gramShort": "г",
 
   "client.nav.home": "Главная",
@@ -446,6 +462,18 @@ const ru: Dictionary = {
   "client.profile.healthSaved": "Данные здоровья сохранены",
   "client.profile.healthHeader": "Данные о здоровье",
   "client.profile.bmi": "Индекс массы тела (ИМТ)",
+  "client.profile.bmi.status.underweight": "Ниже нормы",
+  "client.profile.bmi.status.normal": "Норма",
+  "client.profile.bmi.status.overweight": "Выше нормы",
+  "client.profile.bmi.status.obesity1": "Пора заняться формой",
+  "client.profile.bmi.status.obesity2": "Давайте бережно в режим",
+  "client.profile.bmi.status.obesity3": "Начнём с малого — вы справитесь",
+  "client.profile.bmi.hint.underweight": "Немного не добрали — пора в зал и к вкусному рациону. Маленькие шаги каждый день!",
+  "client.profile.bmi.hint.normal": "Отлично! Вы в хорошем диапазоне — держим темп и поддерживаем привычки.",
+  "client.profile.bmi.hint.overweight": "Ничего страшного — лёгкая активность и питание творят чудеса. Начнём спокойно.",
+  "client.profile.bmi.hint.obesity1": "Самое время мягко вернуться к движению: прогулки, зал без перегруза и стабильность.",
+  "client.profile.bmi.hint.obesity2": "Главное — бережно и регулярно. Мы рядом: начнём с простого плана и прогресса по чуть‑чуть.",
+  "client.profile.bmi.hint.obesity3": "Вы не один/одна. Начнём с безопасных шагов и поддержим в тренировках и режиме.",
   "client.profile.weightKg": "Вес (кг)",
   "client.profile.heightCm": "Рост (см)",
   "client.profile.gender": "Пол",
@@ -521,6 +549,8 @@ const en: Dictionary = {
   "common.carbs": "carbs",
   "common.duration": "Duration",
   "common.trainer": "Trainer",
+  "common.themeDark": "Dark theme",
+  "common.themeLight": "Light theme",
   "common.gramShort": "g",
 
   "client.nav.home": "Home",
@@ -691,6 +721,18 @@ const en: Dictionary = {
   "client.profile.healthSaved": "Health data saved",
   "client.profile.healthHeader": "Health data",
   "client.profile.bmi": "Body Mass Index (BMI)",
+  "client.profile.bmi.status.underweight": "Below normal",
+  "client.profile.bmi.status.normal": "Normal",
+  "client.profile.bmi.status.overweight": "Above normal",
+  "client.profile.bmi.status.obesity1": "Time to get in shape",
+  "client.profile.bmi.status.obesity2": "Let’s ease into a routine",
+  "client.profile.bmi.status.obesity3": "Start small — you’ve got this",
+  "client.profile.bmi.hint.underweight": "A bit under — some strength training and a nourishing diet can help. Small steps daily.",
+  "client.profile.bmi.hint.normal": "Great! You're in a healthy range — keep the momentum and good habits.",
+  "client.profile.bmi.hint.overweight": "No worries — gentle activity and nutrition changes go a long way. Let's start calmly.",
+  "client.profile.bmi.hint.obesity1": "A good moment to return to movement: walks, light gym work, and consistency.",
+  "client.profile.bmi.hint.obesity2": "The key is gentle and regular. We'll start with a simple plan and steady progress.",
+  "client.profile.bmi.hint.obesity3": "You're not alone. We'll begin with safe steps and support you with training and routine.",
   "client.profile.weightKg": "Weight (kg)",
   "client.profile.heightCm": "Height (cm)",
   "client.profile.gender": "Gender",
