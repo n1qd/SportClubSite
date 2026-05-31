@@ -41,7 +41,7 @@ const plans = [
   {
     name: "Базовый",
     slug: "basic",
-    price: "2 000",
+    price: "2 500",
     period: "30 дней",
     emoji: "🏃",
     color: "from-emerald-600 to-emerald-800",
@@ -50,7 +50,7 @@ const plans = [
   {
     name: "Стандарт",
     slug: "standard",
-    price: "4 500",
+    price: "4 000",
     period: "30 дней",
     emoji: "💪",
     color: "from-emerald-700 to-teal-900",
@@ -66,13 +66,31 @@ const plans = [
     tag: "Максимум"
   },
   {
-    name: "VIP Годовой",
+    name: "Годовой VIP",
     slug: "vip-year",
     price: "60 000",
     period: "365 дней",
     emoji: "👑",
     color: "from-violet-700 to-violet-900",
-    tag: "−20%"
+    tag: "VIP"
+  },
+  {
+    name: "Студенческий",
+    slug: "student",
+    price: "1 800",
+    period: "30 дней",
+    emoji: "🎓",
+    color: "from-sky-600 to-sky-900",
+    tag: "−28%"
+  },
+  {
+    name: "Пробный",
+    slug: "trial",
+    price: "900",
+    period: "7 дней",
+    emoji: "✨",
+    color: "from-slate-600 to-slate-800",
+    tag: "Проба"
   }
 ] as const;
 
@@ -237,27 +255,27 @@ export default function LandingPage() {
                 aria-hidden
               />
             </div>
-            <RevealStagger className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <RevealStagger className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {plans.map((p) => (
                 <Link
-                  key={p.name}
+                  key={p.slug}
                   href={`/auth/login?mode=register&plan=${p.slug}`}
-                  className={`landing-plan-link landing-card-lift group relative overflow-hidden rounded-2xl bg-gradient-to-br ${p.color} p-6 text-left text-white shadow-lg no-underline`}
+                  className={`landing-plan-link landing-card-lift group relative overflow-hidden rounded-2xl bg-gradient-to-br ${p.color} p-6 text-left text-white/90 shadow-lg no-underline`}
                   aria-label={`${p.name}: перейти к регистрации`}
                 >
                   <span className="landing-plan-shine" aria-hidden />
-                  <span className="absolute right-3 top-3 rounded-full bg-black/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/95 backdrop-blur-[2px]">
+                  <span className="absolute right-3 top-3 rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/90 backdrop-blur-[2px]">
                     {p.tag}
                   </span>
                   <div className="text-3xl transition-transform duration-300 group-hover:scale-110">
                     {p.emoji}
                   </div>
-                  <h3 className="mt-3 text-lg font-bold">{p.name}</h3>
+                  <h3 className="mt-3 text-lg font-bold text-white/95">{p.name}</h3>
                   <div className="mt-2">
-                    <span className="text-2xl font-black">{p.price} ₽</span>
-                    <span className="ml-1 text-sm opacity-80">/ {p.period}</span>
+                    <span className="text-2xl font-black text-white/95">{p.price} ₽</span>
+                    <span className="ml-1 text-sm text-white/70">/ {p.period}</span>
                   </div>
-                  <span className="landing-plan-cta mt-4 inline-flex items-center gap-1 text-sm font-bold">
+                  <span className="landing-plan-cta mt-4 inline-flex items-center gap-1 text-sm font-bold text-white/75">
                     Оформить
                     <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1">
                       →

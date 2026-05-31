@@ -4,7 +4,7 @@ import { TrainerLayout } from "@/components/layout/TrainerLayout";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { requireAuth, type AuthedPageProps } from "@/lib/ssr-auth";
-import { getAllGroupWorkouts, getAllTrainers, getTrainingRequests, updateGroupWorkout } from "@/lib/db";
+import { getAllGroupWorkouts, getAllTrainers, updateGroupWorkout } from "@/lib/db";
 import type { GroupWorkout } from "@/lib/models";
 import { Timestamp } from "firebase/firestore";
 import { Input } from "@/components/ui/Input";
@@ -16,7 +16,6 @@ type Props = AuthedPageProps;
 export default function TrainerDashboard({ user }: Props) {
   const { language } = useTranslation();
   const [workouts, setWorkouts] = useState<GroupWorkout[]>([]);
-  const [approvedRequests, setApprovedRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
   const [editDateStr, setEditDateStr] = useState("");
@@ -28,10 +27,9 @@ export default function TrainerDashboard({ user }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const [allWorkouts, trainers, reqs] = await Promise.all([
+        const [allWorkouts, trainers] = await Promise.all([
           getAllGroupWorkouts(false),
           getAllTrainers(),
-          getTrainingRequests({ trainerId: user.uid, status: "approved" }),
         ]);
         const myTrainerDoc = trainers.find((t) => t.userId === user.uid);
         const trainerIdForFilter = myTrainerDoc?.id ?? user.uid;
@@ -39,7 +37,6 @@ export default function TrainerDashboard({ user }: Props) {
           (w) => w.trainerId === user.uid || w.trainerId === trainerIdForFilter
         );
         setWorkouts(mine);
-        setApprovedRequests(reqs);
       } catch { /* ignore */ }
       setLoading(false);
     })();
@@ -49,24 +46,23 @@ export default function TrainerDashboard({ user }: Props) {
   const endOfWeek = new Date(now);
   endOfWeek.setDate(now.getDate() + 7);
 
-  const upcomingGroup = workouts.filter((w) => {
-    const dt = w.dateTime?.toDate ? w.dateTime.toDate() : new Date();
-    return dt >= now && dt <= endOfWeek;
-  });
-  const rTime = (r: { requestedDateTime?: { toDate?: () => Date } }) =>
-    (r.requestedDateTime?.toDate?.() ?? new Date()).getTime();
-  const hasMatchingWorkout = (r: { clientId: string; trainerId: string; requestedDateTime?: { toDate?: () => Date } }) =>
-    workouts.some(
-      (w) =>
-        w.isIndividual &&
-        w.clientId === r.clientId &&
-        w.trainerId === r.trainerId &&
-        (w.dateTime?.toDate?.() ?? new Date()).getTime() === rTime(r)
-    );
-  const upcomingIndividual = approvedRequests.filter((r) => {
-    const dt = r.requestedDateTime?.toDate ? r.requestedDateTime.toDate() : new Date();
-    return dt >= now && dt <= endOfWeek && !hasMatchingWorkout(r);
-  });
+  const upcomingMerged = useMemo(() => {
+    return workouts
+      .filter((w) => {
+        const dt = w.dateTime?.toDate ? w.dateTime.toDate() : new Date();
+        return dt >= now && dt <= endOfWeek;
+      })
+      .map((w) => ({
+        id: w.id,
+        workout: w,
+        date: w.dateTime?.toDate?.() ?? new Date(),
+        name: w.isIndividual ? `Индивидуальная — ${w.clientName || "Клиент"}` : w.name,
+        durationMinutes: w.durationMinutes,
+        extra: !w.isIndividual ? `${w.currentParticipants}/${w.maxParticipants} чел.` : "",
+      }))
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [workouts, now, endOfWeek]);
+
   const editingWorkout = editingWorkoutId ? workouts.find((w) => w.id === editingWorkoutId) : null;
 
   const openEditModal = (workout: GroupWorkout) => {
@@ -94,15 +90,13 @@ export default function TrainerDashboard({ user }: Props) {
         dateTime: Timestamp.fromDate(d),
         durationMinutes: editDuration,
       });
-      const [allWorkouts, trainers, reqs] = await Promise.all([
+      const [allWorkouts, trainers] = await Promise.all([
         getAllGroupWorkouts(false),
         getAllTrainers(),
-        getTrainingRequests({ trainerId: user.uid, status: "approved" }),
       ]);
       const myTrainerDoc = trainers.find((t) => t.userId === user.uid);
       const trainerIdForFilter = myTrainerDoc?.id ?? user.uid;
       setWorkouts(allWorkouts.filter((w) => w.trainerId === user.uid || w.trainerId === trainerIdForFilter));
-      setApprovedRequests(reqs);
       closeEditModal();
     } catch (e: unknown) {
       setEditError(toUserFacingMessage(e, language));
@@ -110,27 +104,6 @@ export default function TrainerDashboard({ user }: Props) {
       setEditSaving(false);
     }
   };
-
-  const upcomingMerged = useMemo(() => {
-    const fromGroup = upcomingGroup.map((w) => ({
-      type: "group" as const,
-      id: w.id,
-      workout: w,
-      date: w.dateTime?.toDate?.() ?? new Date(),
-      name: w.isIndividual ? `Индивидуальная — ${w.clientName || "Клиент"}` : w.name,
-      durationMinutes: w.durationMinutes,
-      extra: !w.isIndividual ? `${w.currentParticipants}/${w.maxParticipants} чел.` : "",
-    }));
-    const fromInd = upcomingIndividual.map((r) => ({
-      type: "individual" as const,
-      id: r.id,
-      date: r.requestedDateTime?.toDate?.() ?? new Date(),
-      name: `Индивидуальная — ${r.clientName || "Клиент"}`,
-      durationMinutes: r.durationMinutes ?? 60,
-      extra: "",
-    }));
-    return [...fromGroup, ...fromInd].sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [upcomingGroup, upcomingIndividual]);
 
   return (
     <TrainerLayout title="Расписание">
@@ -142,15 +115,15 @@ export default function TrainerDashboard({ user }: Props) {
             Предстоящих на 7 дней: {upcomingMerged.length} (групповые и индивидуальные)
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button href="/trainer/requests" size="sm">
-              Заявки
+            <Button href="/trainer/schedule" size="sm">
+              Слоты доступности
             </Button>
             <Button href="/trainer/messages" size="sm" variant="secondary">
               Чаты
             </Button>
           </div>
           <p className="text-[10px] text-slate-500">
-            Заявки клиентов и слоты доступности — в разделе «Заявки».
+            Клиенты записываются напрямую в свободные слоты. Общение — в разделе «Чат».
           </p>
         </Card>
 
@@ -165,7 +138,7 @@ export default function TrainerDashboard({ user }: Props) {
               ) : (
                 <div className="max-h-[350px] space-y-2 overflow-y-auto pr-1">
                   {upcomingMerged.map((item) => (
-                    <div key={`${item.type}-${item.id}`} className="rounded-xl border border-emerald-900/10 bg-emerald-50 px-3 py-2 text-xs">
+                    <div key={item.id} className="rounded-xl border border-emerald-900/10 bg-emerald-50 px-3 py-2 text-xs">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold text-hsc-panel">{item.name}</span>
                         <span className="text-[10px] text-slate-500">
@@ -177,8 +150,8 @@ export default function TrainerDashboard({ user }: Props) {
                           {item.durationMinutes} мин
                           {item.extra && ` | ${item.extra}`}
                         </span>
-                        {item.type === "group" && (item as { workout?: GroupWorkout }).workout?.isIndividual && (
-                          <Button size="sm" variant="ghost" className="text-[10px]" onClick={() => openEditModal((item as { workout: GroupWorkout }).workout)}>
+                        {item.workout.isIndividual && (
+                          <Button size="sm" variant="ghost" className="text-[10px]" onClick={() => openEditModal(item.workout)}>
                             Изменить
                           </Button>
                         )}
@@ -189,7 +162,6 @@ export default function TrainerDashboard({ user }: Props) {
               )}
             </Card>
 
-            {/* Модалка редактирования индивидуальной тренировки */}
             {editingWorkoutId && editingWorkout && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
                 <Card className="w-full max-w-md space-y-3">

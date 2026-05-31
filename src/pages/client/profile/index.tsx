@@ -17,6 +17,7 @@ import { uploadAvatar, avatarPathUsers } from "@/lib/storage";
 import { changeOwnPassword } from "@/lib/auth-client";
 import type { User, UserSubscription, Trainer, Language } from "@/lib/models";
 import { Avatar } from "@/components/ui/Avatar";
+import { AvatarPhotoEditOverlay } from "@/components/ui/AvatarPhotoEditOverlay";
 import { useTranslation } from "@/contexts/LanguageContext";
 import type { TranslationKeys } from "@/lib/i18n/translations";
 import { formatRuPhoneInput, formatRuPhoneInputWithPrev } from "@/lib/input-masks";
@@ -325,25 +326,17 @@ export default function ProfilePage({ user }: Props) {
             {section === "profile" && profileSub === "info" && (
               <Card className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="relative">
+                  <div className="relative shrink-0">
                     <Avatar
                       photoUrl={profile.photoUrl}
                       name={[profile.lastName, profile.firstName].filter(Boolean).join(" ")}
                       size="lg"
                     />
-                    <label
-                      className="absolute bottom-0 right-0 rounded-full bg-hsc-panel p-1.5 text-white cursor-pointer shadow hover:bg-emerald-800 transition-colors"
+                    <AvatarPhotoEditOverlay
+                      uploading={uploadingPhoto}
+                      onChange={handlePhotoChange}
                       title={uploadingPhoto ? t("client.profile.uploadingPhoto") : t("client.profile.editPhotoTooltip")}
-                    >
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        disabled={uploadingPhoto}
-                        onChange={handlePhotoChange}
-                      />
-                      <span className="text-xs">{uploadingPhoto ? "…" : "📷"}</span>
-                    </label>
+                    />
                   </div>
                   {photoError && (
                     <div className="rounded-lg bg-red-50 px-2 py-1.5 text-[11px] text-red-700">
@@ -366,7 +359,7 @@ export default function ProfilePage({ user }: Props) {
                   <Input
                     value={phone}
                     onChange={(e) => setPhone((prev) => formatRuPhoneInputWithPrev(prev, e.target.value))}
-                    placeholder="+7 (___) ___-__-__"
+                    placeholder="+7 ___ ___-__-__"
                     inputMode="tel"
                     autoComplete="tel"
                   />

@@ -4,7 +4,7 @@ function digitsOnly(s: string): string {
 }
 
 /**
- * Маска телефона РФ при вводе: +7 (XXX) XXX-XX-XX.
+ * Маска телефона РФ при вводе: +7 XXX XXX-XX-XX.
  * Ведущая 8 заменяется на +7, при вводе с 9 подставляется +7.
  */
 export function formatRuPhoneInput(raw: string): string {
@@ -18,9 +18,7 @@ export function formatRuPhoneInput(raw: string): string {
   const n = d.slice(1);
   let out = "+7";
   if (n.length >= 1) {
-    out += " (" + n.slice(0, 3);
-    if (n.length >= 3) out += ")";
-    else return out;
+    out += " " + n.slice(0, 3);
   } else return out;
   if (n.length > 3) {
     out += " " + n.slice(3, 6);
@@ -34,11 +32,15 @@ export function formatRuPhoneInput(raw: string): string {
   return out;
 }
 
-/**
- * Вариант для controlled input: принимает предыдущее значение и новое.
- * Сейчас логика форматирования не зависит от `prev`, но сигнатура нужна для удобства вызовов.
- */
-export function formatRuPhoneInputWithPrev(_prev: string, next: string): string {
+/** Как formatRuPhoneInput, но при удалении разделителя (пробел/дефис) убирает последнюю цифру. */
+export function formatRuPhoneInputWithPrev(prev: string, next: string): string {
+  if (next.length < prev.length) {
+    const prevDigits = digitsOnly(prev);
+    const nextDigits = digitsOnly(next);
+    if (nextDigits.length === prevDigits.length && prevDigits.length > 0) {
+      return formatRuPhoneInput(prevDigits.slice(0, -1));
+    }
+  }
   return formatRuPhoneInput(next);
 }
 

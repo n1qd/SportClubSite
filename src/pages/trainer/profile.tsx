@@ -13,6 +13,7 @@ import { formatRuPhoneInput } from "@/lib/input-masks";
 import { useTranslation } from "@/contexts/LanguageContext";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { Avatar } from "@/components/ui/Avatar";
+import { AvatarPhotoEditOverlay } from "@/components/ui/AvatarPhotoEditOverlay";
 
 type Props = AuthedPageProps;
 
@@ -100,22 +101,17 @@ export default function TrainerProfile({ user }: Props) {
             <Card className="space-y-3">
               <h2 className="text-sm font-semibold text-hsc-panel">Профиль</h2>
               <div className="flex items-center gap-3">
-                <div className="relative">
+                <div className="relative shrink-0">
                   <Avatar
                     photoUrl={profile.photoUrl ?? trainerDoc?.photoUrl}
                     name={[profile.lastName, profile.firstName, profile.middleName].filter(Boolean).join(" ")}
                     size="lg"
                   />
-                  <label className="absolute bottom-0 right-0 rounded-full bg-hsc-panel p-1.5 text-white cursor-pointer shadow hover:bg-emerald-800 transition-colors">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      disabled={uploadingPhoto}
-                      onChange={handlePhotoChange}
-                    />
-                    <span className="text-xs">{uploadingPhoto ? "…" : "📷"}</span>
-                  </label>
+                  <AvatarPhotoEditOverlay
+                    uploading={uploadingPhoto}
+                    onChange={handlePhotoChange}
+                    title={uploadingPhoto ? "Загрузка…" : "Изменить фото"}
+                  />
                 </div>
                 <div>
                   <div className="text-[11px] text-slate-500">ФИО</div>

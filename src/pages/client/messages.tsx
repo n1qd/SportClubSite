@@ -1,9 +1,10 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
+import { useChatScrollToBottom } from "@/components/chat/useChatScrollToBottom";
 import type { GetServerSideProps } from "next";
+import { useRouter } from "next/router";
 import { ClientLayout } from "@/components/layout/ClientLayout";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { requireAuth, type AuthedPageProps } from "@/lib/ssr-auth";
 import {
   getChatsForUser,
@@ -12,46 +13,18 @@ import {
   subscribeChatMessages,
   getCurrentUser,
   getTrainerByUserId,
+  updateChatMessage,
+  deleteChatMessage,
 } from "@/lib/db";
 import type { Chat, ChatMessage } from "@/lib/models";
 import { Avatar } from "@/components/ui/Avatar";
 import { useTranslation } from "@/contexts/LanguageContext";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
+import { ChatMessageBubble } from "@/components/chat/ChatMessageBubble";
+import { ChatComposer } from "@/components/chat/ChatComposer";
+import { formatChatDate, isDifferentChatDay } from "@/components/chat/chat-utils";
 
 type Props = AuthedPageProps;
-
-function formatTime(ts: any, locale: string): string {
-  if (!ts) return "";
-  const date = "toDate" in ts ? ts.toDate() : new Date();
-  return date.toLocaleString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatDate(ts: any, locale: string): string {
-  if (!ts) return "";
-  const date = "toDate" in ts ? ts.toDate() : new Date();
-  return date.toLocaleDateString(locale, {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
-
-function formatLastMessageTime(ts: any, locale: string): string {
-  if (!ts) return "";
-  const date = "toDate" in ts ? ts.toDate() : new Date();
-  const now = new Date();
-  const isToday =
-    date.getDate() === now.getDate() &&
-    date.getMonth() === now.getMonth() &&
-    date.getFullYear() === now.getFullYear();
-  if (isToday) {
-    return date.toLocaleString(locale, { hour: "2-digit", minute: "2-digit" });
-  }
-  return date.toLocaleDateString(locale, { day: "2-digit", month: "2-digit" });
-}
 
 function getOtherId(chat: Chat, myUid: string): string | null {
   const other = (chat.participantIds ?? []).find((id) => id !== myUid);
@@ -67,17 +40,11 @@ function getOtherName(chat: Chat, myUid: string, fallback: string): string {
 }
 
 function isDifferentDay(ts1: any, ts2: any): boolean {
-  if (!ts1 || !ts2) return true;
-  const d1 = "toDate" in ts1 ? ts1.toDate() : new Date();
-  const d2 = "toDate" in ts2 ? ts2.toDate() : new Date();
-  return (
-    d1.getDate() !== d2.getDate() ||
-    d1.getMonth() !== d2.getMonth() ||
-    d1.getFullYear() !== d2.getFullYear()
-  );
+  return isDifferentChatDay(ts1, ts2);
 }
 
 export default function MessagesPage({ user }: Props) {
+  const router = useRouter();
   const { t, language } = useTranslation();
   const locale = language === "en" ? "en-US" : "ru-RU";
 
@@ -95,8 +62,32 @@ export default function MessagesPage({ user }: Props) {
   const [otherPhotos, setOtherPhotos] = useState<Record<string, string>>({});
   const [otherDisplayNames, setOtherDisplayNames] = useState<Record<string, string>>({});
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const { containerRef: messagesContainerRef, scrollToBottom } = useChatScrollToBottom(
+    selectedChatId,
+    loadingMessages
+  );
+
+  const messageLabels = {
+    copy: t("client.messages.copy"),
+    edit: t("client.messages.edit"),
+    delete: t("client.messages.delete"),
+    deleteConfirm: t("client.messages.deleteConfirm"),
+    save: t("client.messages.save"),
+    cancel: t("client.messages.cancel"),
+    edited: t("client.messages.edited"),
+    copied: t("client.messages.copied"),
+    editExpired: t("client.messages.editExpired"),
+    openPhoto: t("client.messages.openPhoto"),
+  };
+
+  const composerLabels = {
+    placeholder: t("client.messages.placeholder"),
+    send: t("client.messages.send"),
+    sending: t("client.messages.sending"),
+    attachPhoto: t("client.messages.attachPhoto"),
+    removePhoto: t("client.messages.removePhoto"),
+    photoFailed: t("client.messages.photoFailed"),
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -156,6 +147,15 @@ export default function MessagesPage({ user }: Props) {
   }, [user.uid, t, language]);
 
   useEffect(() => {
+    const chatParam = router.query.chat;
+    if (typeof chatParam !== "string" || !chatParam) return;
+    if (loadingChats) return;
+    setSelectedChatId(chatParam);
+    setMobileShowChat(true);
+    setLoadingMessages(true);
+  }, [router.query.chat, loadingChats]);
+
+  useEffect(() => {
     if (!selectedChatId) {
       setMessages([]);
       return;
@@ -185,22 +185,18 @@ export default function MessagesPage({ user }: Props) {
     };
   }, [selectedChatId]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  async function handleSend(payload: { text: string; imageUrl?: string }) {
+    if ((!payload.text.trim() && !payload.imageUrl) || !selectedChatId || sending) return;
 
-  async function handleSend() {
-    if (!inputText.trim() || !selectedChatId || sending) return;
-
-    const text = inputText.trim();
-    setInputText("");
     setSending(true);
+    setInputText("");
 
     try {
       const selectedChat = chats.find((c) => c.id === selectedChatId);
       const senderName = selectedChat?.participantNames?.[user.uid] ?? user.email ?? t("client.messages.peer");
 
-      await sendChatMessage(selectedChatId, user.uid, senderName, text);
+      await sendChatMessage(selectedChatId, user.uid, senderName, payload.text, payload.imageUrl);
+      scrollToBottom();
 
       const updatedChats = await getChatsForUser(user.uid);
       setChats(
@@ -212,17 +208,36 @@ export default function MessagesPage({ user }: Props) {
       );
     } catch (e: any) {
       setError(toUserFacingMessage(e, language));
-      setInputText(text);
+      setInputText(payload.text);
+      throw e;
     } finally {
       setSending(false);
-      inputRef.current?.focus();
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+  async function handleEditMessage(messageId: string, newText: string) {
+    try {
+      await updateChatMessage(messageId, newText);
+    } catch (e: any) {
+      setError(toUserFacingMessage(e, language));
+      throw e;
+    }
+  }
+
+  async function handleDeleteMessage(messageId: string) {
+    try {
+      await deleteChatMessage(messageId);
+      const updatedChats = await getChatsForUser(user.uid);
+      setChats(
+        updatedChats.sort((a, b) => {
+          const ta = a.lastMessageAt?.toMillis?.() ?? 0;
+          const tb = b.lastMessageAt?.toMillis?.() ?? 0;
+          return tb - ta;
+        })
+      );
+    } catch (e: any) {
+      setError(toUserFacingMessage(e, language));
+      throw e;
     }
   }
 
@@ -230,6 +245,7 @@ export default function MessagesPage({ user }: Props) {
     setSelectedChatId(chatId);
     setMobileShowChat(true);
     setInputText("");
+    setLoadingMessages(true);
   }
 
   function goBackToList() {
@@ -246,20 +262,9 @@ export default function MessagesPage({ user }: Props) {
     );
   }
 
-  /** Фиксированная высота области чатов (список + переписка), чтобы вёрстка не «прыгала». */
-  const chatBlockClass =
-    "min-h-[380px] h-[min(72vh,620px)] max-h-[620px] md:h-[560px]";
-
   return (
     <ClientLayout title={t("client.messages.title")}>
-      <div className="flex flex-col gap-4 overflow-hidden">
-        <Card className="space-y-1">
-          <h2 className="text-sm font-semibold text-hsc-panel">{t("client.messages.title")}</h2>
-          <p className="text-xs text-slate-700">
-            {t("client.messages.intro")}
-          </p>
-        </Card>
-
+      <div className="flex flex-col gap-3 overflow-hidden">
         {error && (
           <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
             {error}
@@ -279,208 +284,132 @@ export default function MessagesPage({ user }: Props) {
             </Button>
           </Card>
         ) : (
-          <div className={`flex min-h-0 gap-3 ${chatBlockClass}`}>
-            <div
-              className={`w-full md:w-1/3 flex-shrink-0 h-full min-h-0 ${
-                mobileShowChat ? "hidden md:block" : "block"
+          <div className="flex h-[calc(100vh-280px)] min-h-[400px] gap-3">
+            <Card
+              className={`w-full space-y-1 overflow-y-auto sm:w-64 sm:flex-shrink-0 ${
+                mobileShowChat ? "hidden sm:block" : ""
               }`}
             >
-              <Card className="h-full flex min-h-0 flex-col space-y-1 p-3 overflow-hidden">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 px-1">
-                  {t("client.messages.chats")} ({chats.length})
-                </p>
-                <div className="flex-1 space-y-0.5 overflow-y-auto">
-                  {chats.map((chat) => {
-                    const otherName = peerLabel(chat);
-                    const isActive = chat.id === selectedChatId;
-                    return (
-                      <button
-                        key={chat.id}
-                        type="button"
-                        onClick={() => selectChat(chat.id)}
-                        className={`w-full rounded-xl px-3 py-2.5 text-left transition-colors ${
-                          isActive
-                            ? "bg-hsc-panel text-white"
-                            : "bg-white hover:bg-emerald-50"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <Avatar
-                            photoUrl={otherPhotos[chat.id]}
-                            name={otherName}
-                            size="md"
-                            className={isActive ? "ring-2 ring-white/50" : ""}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1">
-                              <span
-                                className={`text-xs font-semibold truncate ${
-                                  isActive ? "text-white" : "text-hsc-panel"
-                                }`}
-                              >
-                                {otherName}
-                              </span>
-                              {chat.lastMessageAt && (
-                                <span
-                                  className={`flex-shrink-0 text-[10px] ${
-                                    isActive ? "text-emerald-100" : "text-slate-400"
-                                  }`}
-                                >
-                                  {formatLastMessageTime(chat.lastMessageAt, locale)}
-                                </span>
-                              )}
-                            </div>
-                            {chat.lastMessage && (
-                              <p
-                                className={`truncate text-[11px] mt-0.5 ${
-                                  isActive ? "text-emerald-100" : "text-slate-500"
-                                }`}
-                              >
-                                {chat.lastMessage}
-                              </p>
-                            )}
-                          </div>
+              <h3 className="text-xs font-semibold text-hsc-panel">
+                {t("client.messages.chats")} ({chats.length})
+              </h3>
+              {chats.map((chat) => {
+                const otherName = peerLabel(chat);
+                const isActive = chat.id === selectedChatId;
+                return (
+                  <button
+                    key={chat.id}
+                    type="button"
+                    onClick={() => selectChat(chat.id)}
+                    className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs transition-colors ${
+                      isActive
+                        ? "bg-hsc-panel text-white"
+                        : "bg-white text-slate-700 hover:bg-emerald-50"
+                    }`}
+                  >
+                    <Avatar photoUrl={otherPhotos[chat.id]} name={otherName} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold">{otherName}</div>
+                      {chat.lastMessage && (
+                        <div
+                          className={`mt-0.5 truncate text-[10px] ${
+                            isActive ? "text-emerald-100" : "text-slate-400"
+                          }`}
+                        >
+                          {chat.lastMessage}
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </Card>
-            </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </Card>
 
-            <div
-              className={`flex-1 min-w-0 min-h-0 h-full ${
-                !mobileShowChat ? "hidden md:flex" : "flex"
-              } flex-col`}
+            <Card
+              className={`flex flex-1 flex-col ${
+                !mobileShowChat ? "hidden sm:flex" : "flex"
+              }`}
             >
               {!selectedChatId ? (
-                <Card className="flex-1 flex items-center justify-center">
-                  <div className="text-center space-y-2">
-                    <div className="text-3xl">👈</div>
-                    <p className="text-xs text-slate-500">
-                      {t("client.messages.selectChat")}
-                    </p>
-                  </div>
-                </Card>
+                <div className="flex flex-1 items-center justify-center text-xs text-slate-500">
+                  {t("client.messages.selectChat")}
+                </div>
               ) : (
-                <Card className="flex-1 flex min-h-0 flex-col p-0 overflow-hidden h-full">
-                  <div className="flex items-center gap-2 border-b border-emerald-900/10 px-4 py-3 shrink-0">
+                <>
+                  <div className="flex items-center gap-2 border-b border-emerald-900/10 pb-2">
                     <button
+                      type="button"
                       onClick={goBackToList}
-                      className="md:hidden rounded-lg p-1 text-slate-500 hover:bg-emerald-50 hover:text-hsc-panel transition-colors"
+                      className="text-xs text-hsc-panel sm:hidden"
                     >
-                      ←
+                      ← {t("client.messages.chats")}
                     </button>
                     <Avatar
                       photoUrl={selectedChat ? otherPhotos[selectedChat.id] : undefined}
                       name={selectedChat ? peerLabel(selectedChat) : undefined}
                       size="sm"
                     />
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-hsc-panel truncate">
-                        {selectedChat ? peerLabel(selectedChat) : t("client.messages.peer")}
-                      </div>
-                      <div className="text-[10px] text-slate-500">
-                        {t("client.messages.individual")}
-                      </div>
-                    </div>
+                    <span className="truncate text-sm font-semibold text-hsc-panel">
+                      {selectedChat ? peerLabel(selectedChat) : t("client.messages.peer")}
+                    </span>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
+                  <div ref={messagesContainerRef} className="flex-1 space-y-2 overflow-y-auto py-2">
                     {loadingMessages ? (
-                      <div className="flex items-center justify-center h-full">
-                        <p className="text-xs text-slate-500">
-                          {t("client.messages.loadingMsgs")}
-                        </p>
-                      </div>
+                      <p className="text-center text-xs text-slate-500">
+                        {t("client.messages.loadingMsgs")}
+                      </p>
                     ) : messages.length === 0 ? (
-                      <div className="flex items-center justify-center h-full">
-                        <p className="text-xs text-slate-500">
-                          {t("client.messages.startChat")}
-                        </p>
-                      </div>
+                      <p className="text-center text-xs text-slate-500">
+                        {t("client.messages.startChat")}
+                      </p>
                     ) : (
-                      <>
-                        {messages.map((msg, idx) => {
-                          const isOwn = msg.senderId === user.uid;
-                          const showDateSep =
-                            idx === 0 ||
-                            isDifferentDay(
-                              messages[idx - 1]?.timestamp,
-                              msg.timestamp
-                            );
+                      messages.map((msg, idx) => {
+                        const isOwn = msg.senderId === user.uid;
+                        const showDateSep =
+                          idx === 0 ||
+                          isDifferentDay(messages[idx - 1]?.timestamp, msg.timestamp);
 
-                          return (
-                            <div key={msg.id}>
-                              {showDateSep && (
-                                <div className="flex justify-center my-2">
-                                  <span className="rounded-full bg-slate-100 px-3 py-0.5 text-[10px] text-slate-500">
-                                    {formatDate(msg.timestamp, locale)}
-                                  </span>
-                                </div>
-                              )}
-                              <div
-                                className={`flex ${
-                                  isOwn ? "justify-end" : "justify-start"
-                                } mb-1`}
-                              >
-                                <div
-                                  className={`max-w-[75%] rounded-2xl px-3 py-2 ${
-                                    isOwn
-                                      ? "bg-emerald-600 text-white rounded-br-md"
-                                      : "bg-white border border-emerald-900/10 text-slate-800 rounded-bl-md"
-                                  }`}
-                                >
-                                  {!isOwn && (
-                                    <div className="text-[10px] font-semibold text-emerald-700 mb-0.5">
-                                      {msg.senderName}
-                                    </div>
-                                  )}
-                                  <p className="text-xs whitespace-pre-wrap break-words">
-                                    {msg.text}
-                                  </p>
-                                  <div
-                                    className={`text-[9px] mt-1 text-right ${
-                                      isOwn ? "text-emerald-200" : "text-slate-400"
-                                    }`}
-                                  >
-                                    {formatTime(msg.timestamp, locale)}
-                                  </div>
-                                </div>
+                        return (
+                          <div key={msg.id}>
+                            {showDateSep && (
+                              <div className="my-2 flex justify-center">
+                                <span className="rounded-full bg-slate-100 px-3 py-0.5 text-[10px] text-slate-500">
+                                  {formatChatDate(msg.timestamp, locale)}
+                                </span>
                               </div>
+                            )}
+                            <div className={`mb-1 flex ${isOwn ? "justify-end" : "justify-start"}`}>
+                              <ChatMessageBubble
+                                message={msg}
+                                isOwn={isOwn}
+                                myUid={user.uid}
+                                locale={locale}
+                                labels={messageLabels}
+                                showSenderName={!isOwn}
+                                onEdit={handleEditMessage}
+                                onDelete={handleDeleteMessage}
+                              />
                             </div>
-                          );
-                        })}
-                        <div ref={messagesEndRef} />
-                      </>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
 
-                  <div className="border-t border-emerald-900/10 px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1">
-                        <Input
-                          ref={inputRef}
-                          value={inputText}
-                          onChange={(e) => setInputText(e.target.value)}
-                          onKeyDown={handleKeyDown}
-                          placeholder={t("client.messages.placeholder")}
-                          disabled={sending}
-                        />
-                      </div>
-                      <Button
-                        size="sm"
-                        disabled={!inputText.trim() || sending}
-                        onClick={handleSend}
-                        className="flex-shrink-0"
-                      >
-                        {sending ? t("client.messages.sending") : t("client.messages.send")}
-                      </Button>
-                    </div>
+                  <div className="border-t border-emerald-900/10 pt-2">
+                    <ChatComposer
+                      value={inputText}
+                      onChange={setInputText}
+                      onSend={handleSend}
+                      sending={sending}
+                      labels={composerLabels}
+                      useTextarea
+                    />
                   </div>
-                </Card>
+                </>
               )}
-            </div>
+            </Card>
           </div>
         )}
       </div>

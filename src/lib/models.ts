@@ -146,21 +146,6 @@ export interface TrainerAvailability {
   notes?: string;
 }
 
-// ==================== ЗАПРОСЫ НА ТРЕНИРОВКУ ====================
-
-export interface TrainingRequest {
-  id: string;
-  clientId: string;
-  clientName: string;
-  trainerId: string;
-  trainerName: string;
-  requestedDateTime: Timestamp;
-  durationMinutes: number;
-  status: "pending" | "approved" | "rejected";
-  message?: string;
-  createdAt: Timestamp;
-}
-
 // ==================== МЕССЕНДЖЕР (плоская коллекция chats) ====================
 // Каждый документ — отдельное сообщение; chatId = "uidA_uidB" (отсортировано).
 
@@ -170,8 +155,11 @@ export interface ChatMessage {
   senderId: string;
   senderName: string;
   text: string;
+  /** Сжатое фото (data URL), хранится в Firestore. */
+  imageUrl?: string;
   /** В реальной БД хранится поле `timestamp` (Timestamp). */
   timestamp: Timestamp;
+  editedAt?: Timestamp;
   isRead: boolean;
 }
 

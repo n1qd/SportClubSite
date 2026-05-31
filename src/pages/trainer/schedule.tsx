@@ -6,32 +6,16 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { requireAuth, type AuthedPageProps } from "@/lib/ssr-auth";
 import {
-  getTrainingRequests,
-  updateTrainingRequestStatus,
   getTrainerAvailability,
   addTrainerAvailability,
   deleteTrainerAvailability,
   getCurrentUser,
 } from "@/lib/db";
-import type { TrainingRequest, TrainerAvailability } from "@/lib/models";
+import type { TrainerAvailability } from "@/lib/models";
 import { useTranslation } from "@/contexts/LanguageContext";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type Props = AuthedPageProps;
-type Tab = "requests" | "availability";
-
-const STATUS_LABELS: Record<string, string> = { pending: "Ожидает", approved: "Одобрена", rejected: "Отклонена" };
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800",
-  approved: "bg-emerald-100 text-emerald-800",
-  rejected: "bg-red-100 text-red-800"
-};
-
-function formatDateTime(ts: any) {
-  if (!ts) return "—";
-  const d = "toDate" in ts ? ts.toDate() : new Date();
-  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
 
 function todayISO(): string {
   const d = new Date();
@@ -45,18 +29,14 @@ function formatDateRu(date: string): string {
   return dt.toLocaleDateString("ru-RU", { weekday: "short", day: "2-digit", month: "long" });
 }
 
-export default function TrainerRequests({ user }: Props) {
+export default function TrainerSchedule({ user }: Props) {
   const { language } = useTranslation();
-  const [tab, setTab] = useState<Tab>("requests");
-  const [requests, setRequests] = useState<TrainingRequest[]>([]);
   const [availability, setAvailability] = useState<TrainerAvailability[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionId, setActionId] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [trainerName, setTrainerName] = useState("");
 
-  // Форма добавления слота
   const [newDate, setNewDate] = useState(todayISO());
   const [newStart, setNewStart] = useState("09:00");
   const [newEnd, setNewEnd] = useState("18:00");
@@ -65,12 +45,10 @@ export default function TrainerRequests({ user }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const [reqs, avail, me] = await Promise.all([
-          getTrainingRequests({ trainerId: user.uid }),
+        const [avail, me] = await Promise.all([
           getTrainerAvailability(user.uid),
-          getCurrentUser(user.uid)
+          getCurrentUser(user.uid),
         ]);
-        setRequests(reqs);
         setAvailability(avail);
         if (me) {
           setTrainerName([me.lastName, me.firstName, me.middleName].filter(Boolean).join(" ") || me.email);
@@ -84,18 +62,6 @@ export default function TrainerRequests({ user }: Props) {
     if (success) { const t = setTimeout(() => setSuccess(null), 3000); return () => clearTimeout(t); }
   }, [success]);
 
-  async function handleAction(id: string, status: "approved" | "rejected") {
-    setActionId(id);
-    try {
-      await updateTrainingRequestStatus(id, status);
-      setRequests((prev) => prev.map((r) => r.id === id ? { ...r, status } : r));
-      setSuccess(status === "approved"
-        ? "Тренировка одобрена. Чат с клиентом доступен в разделе «Сообщения»."
-        : "Тренировка отклонена");
-    } catch { /* ignore */ }
-    setActionId(null);
-  }
-
   async function handleAddSlot() {
     setSaveError(null);
     if (!newDate) { setSaveError("Укажите дату"); return; }
@@ -107,7 +73,7 @@ export default function TrainerRequests({ user }: Props) {
       const fresh = await getTrainerAvailability(user.uid);
       setAvailability(fresh);
       setSuccess("Слот добавлен");
-    } catch (e: any) {
+    } catch (e: unknown) {
       setSaveError(toUserFacingMessage(e, language));
     } finally {
       setSavingSlot(false);
@@ -122,66 +88,26 @@ export default function TrainerRequests({ user }: Props) {
     } catch { /* ignore */ }
   }
 
-  const pendingRequests = requests.filter((r) => r.status === "pending");
-
-  // Слоты только начиная с сегодня
   const futureSlots = useMemo(() => {
     const today = todayISO();
     return availability.filter((s) => s.date >= today);
   }, [availability]);
 
   return (
-    <TrainerLayout title="Заявки и расписание">
+    <TrainerLayout title="Моё расписание">
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-1 rounded-xl bg-[color:var(--hsc-surface)] p-1">
-          {(["requests", "availability"] as Tab[]).map((t) => (
-            <button key={t} onClick={() => setTab(t)} className={`rounded-lg py-2 text-xs font-semibold transition-colors ${tab === t ? "bg-[color:var(--hsc-panel)] text-white shadow" : "text-slate-700"}`}>
-              {t === "requests" ? `Заявки (${pendingRequests.length})` : `Моё расписание (${futureSlots.length})`}
-            </button>
-          ))}
-        </div>
-
         {success && <div className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{success}</div>}
         {saveError && <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{saveError}</div>}
 
-        {loading ? <Card className="text-xs text-slate-700">Загрузка...</Card> : tab === "requests" ? (
-          <Card className="space-y-2 max-h-[500px] overflow-y-auto">
-            {requests.length === 0 ? <p className="text-xs text-slate-700">Нет заявок.</p> : (
-              requests.map((r) => (
-                <div key={r.id} className="rounded-xl border border-emerald-900/10 bg-white px-3 py-2 text-xs">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <span className="font-semibold text-hsc-panel">{r.clientName}</span>
-                      <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_COLORS[r.status]}`}>
-                        {STATUS_LABELS[r.status]}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-slate-500">{formatDateTime(r.requestedDateTime)}</span>
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-600">
-                    {r.durationMinutes} мин {r.message && `| ${r.message}`}
-                  </div>
-                  {r.status === "pending" && (
-                    <div className="mt-2 flex gap-2">
-                      <Button size="sm" disabled={actionId === r.id} onClick={() => handleAction(r.id, "approved")}>
-                        {actionId === r.id ? "..." : "Одобрить"}
-                      </Button>
-                      <Button size="sm" variant="ghost" disabled={actionId === r.id} onClick={() => handleAction(r.id, "rejected")}>
-                        Отклонить
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </Card>
+        {loading ? (
+          <Card className="text-xs text-slate-700">Загрузка...</Card>
         ) : (
           <div className="space-y-3">
             <Card className="space-y-3">
               <h3 className="text-sm font-semibold text-hsc-panel">Добавить слот доступности</h3>
               <p className="text-xs text-slate-600">
-                Выберите конкретный день и часы, в которые вы можете провести тренировку.
-                Клиенты увидят эти слоты при записи на индивидуальную тренировку.
+                Выберите день и часы, в которые вы готовы провести индивидуальную тренировку.
+                Клиенты сразу записываются в свободные часы — без заявок и подтверждений.
               </p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <div className="col-span-2">

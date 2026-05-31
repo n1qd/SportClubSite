@@ -1,8 +1,6 @@
 import { ReactNode } from "react";
 import { BaseLayout } from "./BaseLayout";
-import Link from "next/link";
-import { useRouter } from "next/router";
-import clsx from "clsx";
+import { BottomTabNav, bottomTabNavSpacerClass } from "./BottomTabNav";
 import { useAuth } from "@/hooks/useAuth";
 
 interface AdminLayoutProps {
@@ -19,7 +17,6 @@ const navItems = [
 ];
 
 export function AdminLayout({ title, children }: AdminLayoutProps) {
-  const router = useRouter();
   const { logout } = useAuth();
 
   async function handleLogout() {
@@ -33,7 +30,7 @@ export function AdminLayout({ title, children }: AdminLayoutProps) {
 
   return (
     <BaseLayout title={title}>
-      <div className="flex flex-1 flex-col gap-4">
+      <div className={`flex flex-col gap-4 ${bottomTabNavSpacerClass}`}>
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-hsc-panel">Панель администратора</h1>
@@ -50,32 +47,10 @@ export function AdminLayout({ title, children }: AdminLayoutProps) {
           </button>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 md:flex-row">
-          <aside className="w-full md:w-56">
-            <div className="rounded-2xl bg-[color:var(--hsc-surface)] p-2 shadow-sm">
-              {navItems.map((item) => {
-                const active = router.pathname.startsWith(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={clsx(
-                      "flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
-                      active
-                        ? "bg-[color:var(--hsc-panel)] text-white"
-                        : "text-slate-800 hover:bg-emerald-100/60"
-                    )}
-                  >
-                    <span>{item.icon}</span>
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          </aside>
-          <main className="flex-1">{children}</main>
-        </div>
+        <main className="min-w-0 flex-1">{children}</main>
       </div>
+
+      <BottomTabNav items={navItems} />
     </BaseLayout>
   );
 }

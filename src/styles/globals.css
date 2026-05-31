@@ -6,6 +6,12 @@
   --hsc-back: #F5F4E6;
   --hsc-surface: #B4C9B8;
   --hsc-panel: #024E1C;
+  --hsc-accent: #024E1C;
+  --scrollbar-size: 8px;
+  --scrollbar-track: rgba(2, 78, 28, 0.05);
+  --scrollbar-thumb: rgba(2, 78, 28, 0.22);
+  --scrollbar-thumb-hover: rgba(2, 78, 28, 0.42);
+  --scrollbar-thumb-active: rgba(2, 78, 28, 0.55);
 }
 
 html.dark {
@@ -13,10 +19,16 @@ html.dark {
   --hsc-back: #0e1612;
   --hsc-surface: #1e2d24;
   --hsc-panel: #0d7a4d;
+  --hsc-accent: #7ddeb8;
+  --scrollbar-track: rgba(125, 222, 184, 0.04);
+  --scrollbar-thumb: rgba(125, 222, 184, 0.18);
+  --scrollbar-thumb-hover: rgba(125, 222, 184, 0.38);
+  --scrollbar-thumb-active: rgba(125, 222, 184, 0.52);
 }
 
 html {
   scroll-behavior: smooth;
+  font-size: 110%;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -25,33 +37,13 @@ html {
   }
 }
 
-/* Лендинг: мягкий snap секций при прокрутке (класс вешается с страницы) */
+/* Лендинг: snap отключён — секции идут обычным потоком без «прилипания» */
 html.landing-snap-page {
-  scroll-snap-type: y proximity;
-  scroll-padding-top: 4.5rem;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html.landing-snap-page {
-    scroll-snap-type: none;
-    scroll-padding-top: 0;
-  }
+  scroll-snap-type: none;
 }
 
 .landing-snap-section {
-  scroll-snap-align: start;
-}
-
-/* Snap только от планшета и выше — на телефоне мешает естественному скроллу */
-@media (max-width: 639px) {
-  html.landing-snap-page {
-    scroll-snap-type: none;
-    scroll-padding-top: 0;
-  }
-
-  .landing-snap-section {
-    scroll-snap-align: none;
-  }
+  scroll-snap-align: none;
 }
 
 .landing-section-bleed {
@@ -77,9 +69,50 @@ html.landing-snap-page {
   pointer-events: none;
 }
 
+html,
+body {
+  overflow-x: hidden;
+}
+
 body {
   @apply bg-[color:var(--hsc-back)] text-slate-900 dark:text-slate-100;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Кастомные скроллбары — глобально для всего проекта */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 a {
@@ -110,14 +143,90 @@ a {
   html.dark .bg-emerald-50 {
     @apply bg-emerald-900/25;
   }
+  html.dark .bg-emerald-100 {
+    @apply bg-emerald-800/50;
+  }
   html.dark .hover\:bg-emerald-50:hover {
     @apply bg-emerald-900/25;
   }
   html.dark .hover\:bg-emerald-100:hover {
     @apply bg-emerald-900/35;
   }
+  html.dark .hover\:bg-emerald-200:hover {
+    @apply bg-emerald-700/60;
+  }
+  html.dark .bg-red-50 {
+    @apply bg-red-950/40;
+  }
+  html.dark .bg-red-100 {
+    @apply bg-red-950/45;
+  }
+  html.dark .hover\:bg-red-50:hover {
+    @apply bg-red-950/40;
+  }
+  html.dark .hover\:bg-red-100:hover {
+    @apply bg-red-950/55;
+  }
+  html.dark .text-red-700 {
+    @apply text-red-300;
+  }
+  html.dark .text-red-800 {
+    @apply text-red-300;
+  }
+  html.dark .border-red-200 {
+    @apply border-red-900/50;
+  }
+
+  /* Рамки карточек (абонементы, списки и т.д.) — заметнее на тёмном фоне */
+  html.dark .border-emerald-900\/5 {
+    @apply border-emerald-400/30;
+  }
   html.dark .border-emerald-900\/10 {
-    @apply border-white/10;
+    @apply border-emerald-400/45;
+  }
+  html.dark .border-emerald-900\/15 {
+    @apply border-emerald-400/50;
+  }
+  html.dark .border-emerald-900\/20 {
+    @apply border-emerald-400/55;
+  }
+  html.dark .border-emerald-900\/25 {
+    @apply border-emerald-400/60;
+  }
+  html.dark .border-emerald-800\/15 {
+    @apply border-emerald-400/50;
+  }
+  html.dark .border-emerald-700\/15 {
+    @apply border-emerald-400/45;
+  }
+  html.dark .hover\:border-emerald-500\/30:hover {
+    @apply border-emerald-400/65;
+  }
+  html.dark .hover\:border-emerald-600\/35:hover {
+    @apply border-emerald-300/70;
+  }
+  html.dark .hover\:border-emerald-600\/40:hover {
+    @apply border-emerald-300/75;
+  }
+  html.dark .ring-emerald-900\/5 {
+    @apply ring-emerald-400/35;
+  }
+  html.dark .ring-emerald-900\/10 {
+    @apply ring-emerald-400/40;
+  }
+
+  /* Тёмно-зелёный текст (text-hsc-panel) — в dark читаемый светлый акцент */
+  html.dark .text-hsc-panel {
+    color: var(--hsc-accent);
+  }
+  html.dark .hover\:text-hsc-panel:hover {
+    color: var(--hsc-accent);
+  }
+  html.dark .text-emerald-800 {
+    @apply text-emerald-300;
+  }
+  html.dark .text-emerald-900 {
+    @apply text-emerald-100;
   }
 }
 
@@ -127,6 +236,45 @@ a {
 
 .panel-main {
   @apply rounded-2xl bg-[color:var(--hsc-panel)] text-white shadow-lg;
+}
+
+/* Компактные дашборды: на ПК всё на одном экране, скролл только в списках */
+@layer components {
+  .role-shell {
+    @apply flex flex-1 flex-col gap-4 lg:gap-2;
+  }
+
+  .role-shell-header h1 {
+    @apply lg:text-lg;
+  }
+
+  .role-shell-header p {
+    @apply lg:hidden;
+  }
+
+  .dash-card {
+    @apply !p-3 lg:!p-2.5;
+  }
+
+  .dash-stat-value {
+    @apply text-3xl font-black text-hsc-panel lg:text-2xl;
+  }
+
+  .dash-list-scroll {
+    @apply max-h-[360px] space-y-1 overflow-y-auto pr-1 lg:max-h-[5.5rem];
+  }
+
+  .dash-page {
+    @apply space-y-4 lg:space-y-2;
+  }
+
+  .dash-cal-grid button {
+    @apply h-7 rounded text-[10px] lg:h-6 lg:text-[9px];
+  }
+
+  .dash-bju-value {
+    @apply text-lg font-black text-hsc-panel lg:text-base;
+  }
 }
 
 /* ——— Лендинг: анимации (уважение к prefers-reduced-motion) ——— */

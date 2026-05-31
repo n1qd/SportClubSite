@@ -24,7 +24,9 @@ const PLAN_LABELS: Record<string, string> = {
   basic: "Базовый",
   standard: "Стандарт",
   premium: "Премиум",
-  "vip-year": "VIP Годовой"
+  "vip-year": "Годовой VIP",
+  student: "Студенческий",
+  trial: "Пробный"
 };
 
 function planFromQuery(raw: string | string[] | undefined): string | undefined {

@@ -8,9 +8,8 @@ import {
   getAllGroupWorkouts,
   signUpForWorkout,
   cancelWorkoutSignUp,
-  getTrainingRequests,
 } from "@/lib/db";
-import type { GroupWorkout, TrainingRequest } from "@/lib/models";
+import type { GroupWorkout } from "@/lib/models";
 import { useTranslation } from "@/contexts/LanguageContext";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 
@@ -36,18 +35,13 @@ export default function TrainingPage({ user }: Props) {
   const [tab, setTab] = useState<Tab>("MY");
   const [bookSub, setBookSub] = useState<BookSub>("GROUP");
   const [workouts, setWorkouts] = useState<GroupWorkout[]>([]);
-  const [approvedRequests, setApprovedRequests] = useState<TrainingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   async function reload() {
-    const [list, reqs] = await Promise.all([
-      getAllGroupWorkouts(),
-      getTrainingRequests({ clientId: user.uid, status: "approved" }),
-    ]);
+    const list = await getAllGroupWorkouts();
     setWorkouts(list);
-    setApprovedRequests(reqs);
   }
 
   useEffect(() => {
@@ -57,7 +51,7 @@ export default function TrainingPage({ user }: Props) {
       setError(null);
       try {
         await reload();
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled) setError(toUserFacingMessage(e, language));
       } finally {
         if (!cancelled) setLoading(false);
@@ -70,29 +64,16 @@ export default function TrainingPage({ user }: Props) {
 
   const now = useMemo(() => new Date(), []);
 
-  const myWorkoutsMerged = useMemo(() => {
-    const fromGroup = workouts
+  const myWorkouts = useMemo(() => {
+    return workouts
       .filter((w) => {
         const isIndividual = w.isIndividual || (w.maxParticipants === 1 && !!w.clientId);
         const isMineIndividual = isIndividual && w.clientId === user.uid;
         const isSignedGroup = !isIndividual && (w.participantIds ?? []).includes(user.uid);
         return (isMineIndividual || isSignedGroup) && (w.dateTime?.toDate?.() ?? new Date()) >= now;
       })
-      .map((w) => ({ type: "group" as const, workout: w, date: w.dateTime?.toDate?.() ?? new Date() }));
-    const rTime = (r: TrainingRequest) => (r.requestedDateTime?.toDate?.() ?? new Date()).getTime();
-    const hasMatchingWorkout = (r: TrainingRequest) =>
-      workouts.some(
-        (w) =>
-          w.isIndividual &&
-          w.clientId === r.clientId &&
-          w.trainerId === r.trainerId &&
-          (w.dateTime?.toDate?.() ?? new Date()).getTime() === rTime(r)
-      );
-    const fromIndividual = approvedRequests
-      .filter((r) => (r.requestedDateTime?.toDate?.() ?? new Date()) >= now && !hasMatchingWorkout(r))
-      .map((r) => ({ type: "individual" as const, request: r, date: r.requestedDateTime?.toDate?.() ?? new Date() }));
-    return [...fromGroup, ...fromIndividual].sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [workouts, user.uid, approvedRequests, now]);
+      .sort((a, b) => a.dateTime.toMillis() - b.dateTime.toMillis());
+  }, [workouts, user.uid, now]);
 
   const groupWorkouts = useMemo(() => {
     const in14Days = new Date(now);
@@ -112,7 +93,7 @@ export default function TrainingPage({ user }: Props) {
     try {
       await signUpForWorkout(w.id, user.uid);
       await reload();
-    } catch (e: any) {
+    } catch (e: unknown) {
       setError(toUserFacingMessage(e, language));
     } finally {
       setActionLoadingId(null);
@@ -125,7 +106,7 @@ export default function TrainingPage({ user }: Props) {
     try {
       await cancelWorkoutSignUp(w.id, user.uid);
       await reload();
-    } catch (e: any) {
+    } catch (e: unknown) {
       setError(toUserFacingMessage(e, language));
     } finally {
       setActionLoadingId(null);
@@ -148,7 +129,7 @@ export default function TrainingPage({ user }: Props) {
               tab === "MY" ? "bg-[color:var(--hsc-panel)] text-white shadow" : "text-slate-700"
             }`}
           >
-            {t("client.training.tabMy")} ({myWorkoutsMerged.length})
+            {t("client.training.tabMy")} ({myWorkouts.length})
           </button>
           <button
             type="button"
@@ -193,59 +174,41 @@ export default function TrainingPage({ user }: Props) {
         ) : tab === "MY" ? (
           <Card className="space-y-2">
             <h3 className="text-sm font-semibold text-hsc-panel">{t("client.training.upcoming")}</h3>
-            {myWorkoutsMerged.length === 0 ? (
+            {myWorkouts.length === 0 ? (
               <p className="text-xs text-slate-700">{t("client.training.noUpcoming")}</p>
             ) : (
               <div className="space-y-2">
-                {myWorkoutsMerged.map((item) =>
-                  item.type === "group" ? (
-                    <div
-                      key={`g-${item.workout.id}`}
-                      className="rounded-xl border border-emerald-900/15 bg-emerald-50 px-3 py-2 text-xs"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-semibold text-hsc-panel">
-                          {item.workout.isIndividual ? t("client.training.individualWorkout") : item.workout.name}
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          {formatDate(item.workout.dateTime, locale)}
-                        </div>
+                {myWorkouts.map((w) => (
+                  <div
+                    key={w.id}
+                    className="rounded-xl border border-emerald-900/15 bg-emerald-50 px-3 py-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-semibold text-hsc-panel">
+                        {w.isIndividual ? t("client.training.individualWorkout") : w.name}
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-700">
-                        <span>{t("common.trainer")}: {item.workout.trainerName}</span>
-                        <span>{t("common.duration")}: {item.workout.durationMinutes} {t("common.minutes")}</span>
-                      </div>
-                      {!item.workout.isIndividual && (
-                        <div className="mt-2 flex justify-end">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={actionLoadingId === item.workout.id}
-                            onClick={() => handleCancel(item.workout)}
-                          >
-                            {actionLoadingId === item.workout.id ? t("client.training.cancelling") : t("client.training.cancel")}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div
-                      key={`i-${item.request.id}`}
-                      className="rounded-xl border border-emerald-900/15 bg-emerald-50 px-3 py-2 text-xs"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-semibold text-hsc-panel">{t("client.training.individualWorkout")}</div>
-                        <div className="text-[10px] text-slate-500">
-                          {formatDate(item.request.requestedDateTime, locale)}
-                        </div>
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-700">
-                        <span>{t("common.trainer")}: {item.request.trainerName}</span>
-                        <span>{t("common.duration")}: {item.request.durationMinutes} {t("common.minutes")}</span>
+                      <div className="text-[10px] text-slate-500">
+                        {formatDate(w.dateTime, locale)}
                       </div>
                     </div>
-                  )
-                )}
+                    <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-700">
+                      <span>{t("common.trainer")}: {w.trainerName}</span>
+                      <span>{t("common.duration")}: {w.durationMinutes} {t("common.minutes")}</span>
+                    </div>
+                    {!w.isIndividual && (
+                      <div className="mt-2 flex justify-end">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={actionLoadingId === w.id}
+                          onClick={() => handleCancel(w)}
+                        >
+                          {actionLoadingId === w.id ? t("client.training.cancelling") : t("client.training.cancel")}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </Card>
@@ -253,14 +216,9 @@ export default function TrainingPage({ user }: Props) {
           <Card className="space-y-3">
             <h3 className="text-sm font-semibold text-hsc-panel">{t("client.training.individualHeader")}</h3>
             <p className="text-xs text-slate-700">{t("client.training.individualIntro")}</p>
-            <div className="flex flex-wrap gap-2">
-              <Button href="/client/booking" size="sm">
-                {t("client.training.bookTrainer")}
-              </Button>
-              <Button href="/client/booking?step=requests" size="sm" variant="secondary">
-                {t("client.training.myRequests")}
-              </Button>
-            </div>
+            <Button href="/client/booking" size="sm">
+              {t("client.training.bookTrainer")}
+            </Button>
           </Card>
         ) : (
           <Card className="space-y-2">

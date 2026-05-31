@@ -2,18 +2,18 @@ rules_version = '2';
 
 // =============================================================================
 //  HypeSportClub — Firestore Security Rules
-//  Соответствует актуальной схеме данных:
+//  Коллекции:
 //   • users            (CLIENT / TRAINER / ADMIN / MANAGER)
-//   • subscriptions    (шаблоны абонементов, управляет MANAGER)
-//   • user_subscriptions (выданные клиенту, выдаёт ADMIN)
+//   • subscriptions    (шаблоны абонементов)
+//   • user_subscriptions (выданные / купленные клиентом)
 //   • trainers         (карточки тренеров)
 //   • group_workouts   (групповые + индивидуальные тренировки)
-//   • trainer_availability (слоты доступности тренера на конкретные даты)
-//   • training_requests (заявки клиентов на индивидуальную)
+//   • trainer_availability (слоты доступности тренера)
+//   • workout_registrations (записи на групповые тренировки)
 //   • chats            (плоская коллекция сообщений с полем chatId)
-//   • food_entries     (дневник питания клиента)
+//   • food_entries     (дневник питания / БЖУ)
 //   • users/{uid}/nutritionHistory (история BMR-расчётов)
-//   • expenses, revenues (финансы — MANAGER)
+//   • expenses, revenues (финансы)
 //   • reviews, notifications, app_settings
 // =============================================================================
 
@@ -30,9 +30,8 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Безопасное получение роли: exists() защищает от краша при отсутствии документа
     function getUserRole() {
-      // Безопасно достаём роль: get() кидает ошибку если документ отсутствует,
-      // поэтому предварительно проверяем существование документа.
       return exists(/databases/$(database)/documents/users/$(request.auth.uid))
         ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', null)
         : null;
@@ -42,156 +41,221 @@ service cloud.firestore {
     function isTrainer() { return isAuthenticated() && getUserRole() == 'TRAINER'; }
     function isClient()  { return isAuthenticated() && getUserRole() == 'CLIENT'; }
     function isManager() { return isAuthenticated() && getUserRole() == 'MANAGER'; }
-    function isStaff()   { return isAdmin() || isTrainer() || isManager(); }
 
-    // Изменение групповой тренировки клиентом — только список участников
+    // Персонал: администратор, тренер или менеджер
+    function isStaff() { return isAdmin() || isTrainer() || isManager(); }
+
+    // Клиент изменяет только список участников групповой тренировки
     function isSignUpOrCancelUpdate() {
       let allowedFields = ['participantIds', 'currentParticipants'];
       let changedFields = request.resource.data.diff(resource.data).affectedKeys();
       return changedFields.hasOnly(allowedFields);
     }
 
-    // ==================== ПОЛЬЗОВАТЕЛИ ====================
+    // ==================== ПОЛЬЗОВАТЕЛИ (users) ====================
     match /users/{userId} {
-      allow read:   if isOwner(userId) || isAdmin() || isTrainer() || isManager();
+      // Чтение: свой профиль, персонал, или публичная карточка тренера для аватаров/ФИО
+      allow read:   if isOwner(userId) || isAdmin() || isTrainer() || isManager() ||
+        (isAuthenticated() && resource.data.role == 'TRAINER');
+      // Создание: при регистрации (uid совпадает) или персонал управления
       allow create: if isOwner(userId) || isAdmin() || isManager();
+      // Обновление: свой профиль или персонал управления
       allow update: if isOwner(userId) || isAdmin() || isManager();
+      // Удаление: только администратор
       allow delete: if isAdmin();
 
-      // История BMR-расчётов клиента (заполняется Cloud Function calculateBMR)
+      // История BMR-расчётов (заполняется клиентом или Cloud Function)
       match /nutritionHistory/{entryId} {
-        allow read:   if isOwner(userId) || isAdmin();
-        allow create: if isOwner(userId) || isAdmin();
+        allow read:          if isOwner(userId) || isAdmin();
+        allow create:        if isOwner(userId) || isAdmin();
         allow update, delete: if isAdmin();
       }
     }
 
-    // ==================== ШАБЛОНЫ АБОНЕМЕНТОВ ====================
+    // ==================== ШАБЛОНЫ АБОНЕМЕНТОВ (subscriptions) ====================
     match /subscriptions/{subscriptionId} {
+      // Чтение: все авторизованные пользователи
       allow read: if isAuthenticated();
+      // Создание и обновление: администратор или менеджер
       allow create, update: if isAdmin() || isManager();
+      // Удаление: только администратор
       allow delete: if isAdmin();
     }
 
-    // ==================== ВЫДАННЫЕ АБОНЕМЕНТЫ ====================
-    match /user_subscriptions/{subId} {
+    // ==================== КУПЛЕННЫЕ АБОНЕМЕНТЫ (user_subscriptions) ====================
+    match /user_subscriptions/{subscriptionId} {
+      // Чтение: владелец, администратор или менеджер
       allow read: if isAuthenticated() &&
         (resource.data.userId == request.auth.uid || isAdmin() || isManager());
-      // Создаёт админ (выдача клиенту)
-      allow create: if isAdmin();
+
+      // Создание: клиент покупает себе, или администратор/менеджер выдаёт
+      allow create: if isAuthenticated() &&
+        (request.resource.data.userId == request.auth.uid || isAdmin() || isManager());
+
+      // Обновление: владелец (без смены userId) или администратор
       allow update: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isAdmin());
+        ((resource.data.userId == request.auth.uid &&
+          request.resource.data.userId == resource.data.userId) || isAdmin());
+
+      // Удаление: только администратор
       allow delete: if isAdmin();
     }
 
-    // ==================== ТРЕНЕРЫ ====================
+    // ==================== ТРЕНЕРЫ (trainers) ====================
     match /trainers/{trainerId} {
-      allow read:   if isAuthenticated();
+      // Чтение: все авторизованные пользователи
+      allow read: if isAuthenticated();
+      // Создание и удаление: только администратор
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (isTrainer() && resource.data.userId == request.auth.uid);
+      // Обновление: администратор или тренер своей карточки
+      allow update: if isAdmin() ||
+        (isTrainer() && resource.data.userId == request.auth.uid);
     }
 
-    // ==================== ТРЕНИРОВКИ (групповые + индивидуальные) ====================
+    // ==================== ТРЕНИРОВКИ (group_workouts) ====================
+    // Охватывает как групповые, так и индивидуальные тренировки
     match /group_workouts/{workoutId} {
       allow read: if isAuthenticated();
-      // Создавать может персонал; клиент — только индивидуальную на себя
+
+      // Создание: персонал, или клиент создаёт индивидуальную на себя
       allow create: if isStaff() ||
         (isClient() && request.resource.data.isIndividual == true &&
          request.resource.data.clientId == request.auth.uid);
+
+      // Обновление: админ; тренер своих; клиент своей индивидуальной или запись/отмена на групповую
       allow update: if isAdmin() ||
         (isTrainer() && resource.data.trainerId == request.auth.uid) ||
         (isClient() && resource.data.clientId == request.auth.uid) ||
         (isClient() && isSignUpOrCancelUpdate());
-      // Удалять — админ или клиент свою индивидуальную
+
+      // Удаление: администратор или клиент отменяет свою индивидуальную
       allow delete: if isAdmin() ||
         (isClient() && resource.data.isIndividual == true &&
          resource.data.clientId == request.auth.uid);
     }
 
-    // ==================== ДОСТУПНОСТЬ ТРЕНЕРА (на конкретные даты) ====================
-    // create: проверяем поле trainerId в request.resource (новый документ)
-    // update/delete: проверяем resource.data (существующий)
-    match /trainer_availability/{docId} {
+    // ==================== РАСПИСАНИЕ ТРЕНЕРОВ (trainer_availability) ====================
+    match /trainer_availability/{availabilityId} {
       allow read: if isAuthenticated();
+
+      // Создание: пользователь, чей uid совпадает с trainerId, или администратор
+      // (uid-matching вместо проверки роли — надёжнее при разных типах ID тренера)
       allow create: if isAuthenticated() &&
         (request.resource.data.trainerId == request.auth.uid || isAdmin());
+
+      // Обновление и удаление: владелец слота или администратор
       allow update, delete: if isAuthenticated() &&
         (resource.data.trainerId == request.auth.uid || isAdmin());
     }
 
-    // ==================== ЗАЯВКИ НА ТРЕНИРОВКУ ====================
-    match /training_requests/{reqId} {
+    // ==================== ЗАПИСИ НА ТРЕНИРОВКИ (workout_registrations) ====================
+    match /workout_registrations/{registrationId} {
       allow read: if isAuthenticated() &&
-        (resource.data.clientId == request.auth.uid ||
-         resource.data.trainerId == request.auth.uid || isStaff());
+        (resource.data.userId == request.auth.uid || isStaff());
+
       allow create: if isAuthenticated() &&
-        request.resource.data.clientId == request.auth.uid;
+        (request.resource.data.userId == request.auth.uid || isStaff());
+
       allow update: if isAuthenticated() &&
-        (resource.data.trainerId == request.auth.uid || isAdmin() ||
-         resource.data.clientId == request.auth.uid);
-      allow delete: if isAdmin() ||
-        (isAuthenticated() && resource.data.clientId == request.auth.uid);
+        (resource.data.userId == request.auth.uid || isStaff());
+
+      allow delete: if isAuthenticated() &&
+        (resource.data.userId == request.auth.uid || isStaff());
     }
 
-    // ==================== ЧАТЫ (плоская коллекция сообщений) ====================
-    // Каждый документ = одно сообщение, поле chatId связывает диалог.
-    // chatId формируется конкатенацией двух uid через "_" в отсортированном порядке.
+    // ==================== ЧАТЫ (chats) ====================
+    // Каждый документ — одно сообщение; chatId связывает диалог двух пользователей
     match /chats/{messageId} {
-      // Читать может любой авторизованный пользователь, чей uid есть в chatId
-      // или участник может прочитать всё (фильтрация на клиенте)
+      // Чтение: любой авторизованный (фильтрация по chatId на уровне приложения)
       allow read: if isAuthenticated();
-      // Отправляет только владелец senderId; chatId должен содержать его uid
+
+      // Создание: отправитель совпадает с uid; chatId должен содержать uid отправителя
       allow create: if isAuthenticated() &&
         request.resource.data.senderId == request.auth.uid &&
         request.resource.data.chatId.matches('.*' + request.auth.uid + '.*');
-      // Обновлять только поле isRead (отметка прочитанным собеседником)
+
+      // Обновление: пометка прочитанным или редактирование автором в первые 12 часов
       allow update: if isAuthenticated() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']) ||
+          (
+            resource.data.senderId == request.auth.uid &&
+            request.resource.data.senderId == resource.data.senderId &&
+            request.resource.data.chatId == resource.data.chatId &&
+            request.resource.data.timestamp == resource.data.timestamp &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt']) &&
+            request.time <= resource.data.timestamp + duration.value(12, 'h')
+          )
+        );
+
+      // Удаление: автор или администратор
       allow delete: if isAuthenticated() &&
         (resource.data.senderId == request.auth.uid || isAdmin());
     }
 
-    // ==================== ДНЕВНИК ПИТАНИЯ (БЖУ) ====================
+    // ==================== БЖУ ДНЕВНИК (food_entries) ====================
     match /food_entries/{entryId} {
       allow read: if isAuthenticated() &&
         (resource.data.userId == request.auth.uid || isAdmin());
+
       allow create: if isAuthenticated() &&
         request.resource.data.userId == request.auth.uid;
+
+      // Обновление: владелец записи
       allow update: if isAuthenticated() &&
         resource.data.userId == request.auth.uid;
+
       allow delete: if isAuthenticated() &&
         (resource.data.userId == request.auth.uid || isAdmin());
     }
 
-    // ==================== ОТЗЫВЫ ====================
-    match /reviews/{reviewId} {
-      allow read: if isAuthenticated();
+    // ==================== ПОЛЬЗОВАТЕЛЬСКИЕ ПРОДУКТЫ БЖУ ====================
+    match /custom_food_products/{productId} {
+      allow read: if isAuthenticated() &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+
       allow create: if isAuthenticated() &&
         request.resource.data.userId == request.auth.uid;
+
       allow update, delete: if isAuthenticated() &&
         (resource.data.userId == request.auth.uid || isAdmin());
     }
 
-    // ==================== УВЕДОМЛЕНИЯ ====================
+    // ==================== ОТЗЫВЫ (reviews) ====================
+    match /reviews/{reviewId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+
+      allow update, delete: if isAuthenticated() &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ==================== УВЕДОМЛЕНИЯ (notifications) ====================
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() &&
         (resource.data.userId == request.auth.uid || isAdmin());
+
       allow create: if isStaff();
+
       allow update, delete: if isAuthenticated() &&
         (resource.data.userId == request.auth.uid || isAdmin());
     }
 
-    // ==================== ФИНАНСЫ (только MANAGER + ADMIN) ====================
+    // ==================== ФИНАНСЫ (expenses, revenues) ====================
+    // Доступно только администратору и менеджеру
     match /expenses/{docId} {
       allow read, create, update, delete: if isAdmin() || isManager();
     }
+
     match /revenues/{docId} {
       allow read, create, update, delete: if isAdmin() || isManager();
     }
 
-    // ==================== НАСТРОЙКИ ПРИЛОЖЕНИЯ ====================
+    // ==================== НАСТРОЙКИ ПРИЛОЖЕНИЯ (app_settings) ====================
     match /app_settings/{settingId} {
-      allow read: if isAuthenticated();
+      allow read:  if isAuthenticated();
       allow write: if isAdmin();
     }
   }

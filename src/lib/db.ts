@@ -22,7 +22,6 @@ import type {
   GroupWorkout,
   NutritionHistoryEntry,
   TrainerAvailability,
-  TrainingRequest,
   Chat,
   ChatMessage,
   FoodEntry,
@@ -594,65 +593,57 @@ export async function updateTrainerAvailability(
   await updateDoc(doc(db(), "trainer_availability", slotId), data as any);
 }
 
-// ----------------------------- TRAINING REQUESTS -----------------------------
+// ----------------------------- ЗАПИСЬ НА ИНДИВИДУАЛЬНУЮ ТРЕНИРОВКУ -----------------------------
 
-function mapTrainingRequest(id: string, data: any): TrainingRequest {
-  return {
-    id,
-    clientId: data.clientId ?? "",
-    clientName: data.clientName ?? "",
-    trainerId: data.trainerId ?? "",
-    trainerName: data.trainerName ?? "",
-    requestedDateTime: toTimestamp(data.requestedDateTime),
-    durationMinutes: data.durationMinutes ?? 60,
-    status: (data.status ?? "pending") as TrainingRequest["status"],
-    message: data.message ?? "",
-    createdAt: toTimestamp(data.createdAt)
-  };
+export interface BookIndividualSlotParams {
+  clientId: string;
+  clientName: string;
+  trainerId: string;
+  trainerName: string;
+  dateTime: Timestamp;
+  durationMinutes: number;
+  availabilitySlotId: string;
 }
 
-export async function createTrainingRequest(data: Omit<TrainingRequest, "id">) {
-  return addDoc(collection(db(), "training_requests"), data);
+function workoutDateHourKey(dateTime: Timestamp): { dateStr: string; hour: number } {
+  const dt = dateTime.toDate();
+  const dateStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  return { dateStr, hour: dt.getHours() };
 }
 
-export async function getTrainingRequests(filters?: { trainerId?: string; clientId?: string; status?: string }): Promise<TrainingRequest[]> {
-  try {
-    let q: any = collection(db(), "training_requests");
-    const constraints: any[] = [];
-    if (filters?.trainerId) constraints.push(where("trainerId", "==", filters.trainerId));
-    if (filters?.clientId) constraints.push(where("clientId", "==", filters.clientId));
-    if (filters?.status) constraints.push(where("status", "==", filters.status));
-    q = constraints.length ? query(q, ...constraints) : q;
-    const snap = await getDocs(q);
-    const list = snap.docs.map((d) => mapTrainingRequest(d.id, d.data()));
-    return list.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
-  } catch { return []; }
+/** Проверяет, занят ли час у тренера (по уже созданным индивидуальным тренировкам). */
+export function isTrainerHourBooked(workouts: GroupWorkout[], dateTime: Timestamp): boolean {
+  const { dateStr, hour } = workoutDateHourKey(dateTime);
+  return workouts.some((w) => {
+    const wk = workoutDateHourKey(w.dateTime);
+    return wk.dateStr === dateStr && wk.hour === hour;
+  });
 }
 
-export async function updateTrainingRequestStatus(id: string, status: "approved" | "rejected") {
-  if (status === "approved") {
-    const reqSnap = await getDoc(doc(db(), "training_requests", id));
-    if (reqSnap.exists()) {
-      const req = reqSnap.data() as any;
-      const dt = toTimestamp(req.requestedDateTime);
-      await addGroupWorkout({
-        name: "Индивидуальная тренировка",
-        description: "",
-        trainerId: req.trainerId ?? "",
-        trainerName: req.trainerName ?? "",
-        clientId: req.clientId ?? "",
-        clientName: req.clientName ?? "",
-        dateTime: dt,
-        durationMinutes: req.durationMinutes ?? 60,
-        maxParticipants: 1,
-        currentParticipants: 1,
-        participantIds: [req.clientId].filter(Boolean) as string[],
-        isIndividual: true,
-        active: true,
-      });
-    }
+/** Сразу создаёт индивидуальную тренировку в свободный слот (без заявок и одобрения). */
+export async function bookIndividualSlot(params: BookIndividualSlotParams): Promise<string> {
+  const { clientId, clientName, trainerId, trainerName, dateTime, durationMinutes, availabilitySlotId } = params;
+  const booked = await getTrainerIndividualWorkouts([trainerId]);
+  if (isTrainerHourBooked(booked, dateTime)) {
+    throw new Error("SLOT_TAKEN");
   }
-  await updateDoc(doc(db(), "training_requests", id), { status });
+  const ref = await addDoc(collection(db(), "group_workouts"), {
+    name: "Индивидуальная тренировка",
+    description: "",
+    trainerId,
+    trainerName,
+    clientId,
+    clientName,
+    dateTime,
+    durationMinutes,
+    maxParticipants: 1,
+    currentParticipants: 1,
+    participantIds: [clientId],
+    isIndividual: true,
+    active: true,
+    availabilitySlotId,
+  });
+  return ref.id;
 }
 
 // ----------------------------- ЧАТЫ (плоская коллекция) -----------------------------
@@ -674,9 +665,19 @@ function mapChatMessage(id: string, data: any): ChatMessage {
     senderId: data.senderId ?? "",
     senderName: data.senderName ?? "",
     text: data.text ?? "",
+    imageUrl: data.imageUrl ?? undefined,
     timestamp: toTimestamp(data.timestamp ?? data.createdAt),
+    editedAt: data.editedAt ? toTimestamp(data.editedAt) : undefined,
     isRead: data.isRead === true
   };
+}
+
+/** Текст превью для списка чатов. */
+export function getChatMessagePreview(m: Pick<ChatMessage, "text" | "imageUrl">, photoLabel = "📷"): string {
+  const trimmed = m.text?.trim();
+  if (trimmed) return trimmed;
+  if (m.imageUrl) return photoLabel;
+  return "";
 }
 
 /** Возвращает список чатов для пользователя — агрегат по chatId всех сообщений. */
@@ -697,7 +698,7 @@ export async function getChatsForUser(uid: string): Promise<Chat[]> {
           id: chatId,
           participantIds: ids,
           participantNames: { [otherId]: "" },
-          lastMessage: m.text,
+          lastMessage: getChatMessagePreview(m),
           lastMessageAt: m.timestamp,
           unreadForMe: 0
         });
@@ -709,7 +710,7 @@ export async function getChatsForUser(uid: string): Promise<Chat[]> {
       }
       // более позднее сообщение считается lastMessage
       if (m.timestamp.toMillis() > (c.lastMessageAt?.toMillis() ?? 0)) {
-        c.lastMessage = m.text;
+        c.lastMessage = getChatMessagePreview(m);
         c.lastMessageAt = m.timestamp;
       }
       // Непрочитанные сообщения от собеседника
@@ -738,7 +739,7 @@ export function subscribeChatsForUser(uid: string, cb: (chats: Chat[]) => void) 
           id: m.chatId,
           participantIds: ids,
           participantNames: { [otherId]: "" },
-          lastMessage: m.text,
+          lastMessage: getChatMessagePreview(m),
           lastMessageAt: m.timestamp,
           unreadForMe: 0
         });
@@ -746,7 +747,7 @@ export function subscribeChatsForUser(uid: string, cb: (chats: Chat[]) => void) 
       const c = map.get(m.chatId)!;
       if (m.senderId !== uid && m.senderName) c.participantNames[m.senderId] = m.senderName;
       if (m.timestamp.toMillis() > (c.lastMessageAt?.toMillis() ?? 0)) {
-        c.lastMessage = m.text;
+        c.lastMessage = getChatMessagePreview(m);
         c.lastMessageAt = m.timestamp;
       }
       if (m.senderId !== uid && !m.isRead) c.unreadForMe = (c.unreadForMe ?? 0) + 1;
@@ -785,15 +786,40 @@ export function subscribeChatMessages(chatId: string, cb: (msgs: ChatMessage[]) 
   }, () => cb([]));
 }
 
-export async function sendChatMessage(chatId: string, senderId: string, senderName: string, text: string) {
-  await addDoc(collection(db(), "chats"), {
+export async function sendChatMessage(
+  chatId: string,
+  senderId: string,
+  senderName: string,
+  text: string,
+  imageUrl?: string
+) {
+  const trimmed = text.trim();
+  if (!trimmed && !imageUrl) {
+    throw new Error("Сообщение должно содержать текст или фото");
+  }
+  const payload: Record<string, unknown> = {
     chatId,
     senderId,
     senderName,
-    text,
+    text: trimmed,
     timestamp: Timestamp.now(),
     isRead: false
+  };
+  if (imageUrl) payload.imageUrl = imageUrl;
+  await addDoc(collection(db(), "chats"), payload);
+}
+
+export async function updateChatMessage(messageId: string, text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error("Текст сообщения не может быть пустым");
+  await updateDoc(doc(db(), "chats", messageId), {
+    text: trimmed,
+    editedAt: Timestamp.now()
   });
+}
+
+export async function deleteChatMessage(messageId: string) {
+  await deleteDoc(doc(db(), "chats", messageId));
 }
 
 /** Помечает все непрочитанные сообщения в чате (адресованные мне) как прочитанные. */

@@ -10,9 +10,10 @@ module.exports = {
     extend: {
       colors: {
         hsc: {
-          back: "#F5F4E6",
-          surface: "#B4C9B8",
-          panel: "#024E1C"
+          back: "var(--hsc-back)",
+          surface: "var(--hsc-surface)",
+          panel: "var(--hsc-panel)",
+          accent: "var(--hsc-accent)"
         }
       },
       borderRadius: {

@@ -22,7 +22,7 @@ const sizeClasses = {
 };
 
 // У data URL после запятой — только base64; ?t= в конце ломает отображение — обрезаем
-function normalizeDataUrl(url: string): string {
+export function normalizeDataUrl(url: string): string {
   if (!url.startsWith("data:") || !url.includes("?")) return url;
   return url.split("?")[0];
 }

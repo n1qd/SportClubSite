@@ -10,20 +10,14 @@ import {
   getAllTrainers,
   getTrainerAvailability,
   getTrainerIndividualWorkouts,
-  createTrainingRequest,
-  getTrainingRequests,
+  bookIndividualSlot,
   getCurrentUser,
   buildChatId,
   sendChatMessage,
 } from "@/lib/db";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 import { onAuthStateChanged } from "firebase/auth";
-import type {
-  Trainer,
-  TrainerAvailability,
-  TrainingRequest,
-  GroupWorkout,
-} from "@/lib/models";
+import type { Trainer, TrainerAvailability, GroupWorkout } from "@/lib/models";
 import { Timestamp } from "firebase/firestore";
 import { useTranslation } from "@/contexts/LanguageContext";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
@@ -31,7 +25,7 @@ import type { TranslationKeys } from "@/lib/i18n/translations";
 
 type Props = AuthedPageProps;
 
-type Step = "SELECT_TRAINER" | "VIEW_AVAILABILITY" | "PICK_TIME" | "MY_REQUESTS";
+type Step = "SELECT_TRAINER" | "VIEW_AVAILABILITY" | "PICK_TIME";
 
 const SPEC_KEYS: Record<string, TranslationKeys> = {
   FITNESS: "client.profile.specFitness",
@@ -47,18 +41,6 @@ const SPEC_KEYS: Record<string, TranslationKeys> = {
 function formatPrice(price: number, locale: string): string {
   const symbol = locale === "en-US" ? " $" : " ₽";
   return price.toLocaleString(locale) + symbol;
-}
-
-function formatDateTime(ts: any, locale: string): string {
-  if (!ts) return "—";
-  const date = "toDate" in ts ? ts.toDate() : new Date();
-  return date.toLocaleString(locale, {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function todayISO(): string {
@@ -83,7 +65,6 @@ export default function BookingPage({ user }: Props) {
   const [selectedTrainer, setSelectedTrainer] = useState<Trainer | null>(null);
   const [availability, setAvailability] = useState<TrainerAvailability[]>([]);
   const [trainerBookedWorkouts, setTrainerBookedWorkouts] = useState<GroupWorkout[]>([]);
-  const [myRequests, setMyRequests] = useState<TrainingRequest[]>([]);
   const [clientName, setClientName] = useState("");
   const [authReady, setAuthReady] = useState(false);
 
@@ -95,10 +76,7 @@ export default function BookingPage({ user }: Props) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
-  // Дожидаемся, пока Firebase JS SDK подхватит сессию из IndexedDB —
-  // иначе addDoc с правилом `clientId == auth.uid` может вернуть permission denied.
   useEffect(() => {
     const auth = getFirebaseAuth();
     if (auth.currentUser) {
@@ -112,23 +90,17 @@ export default function BookingPage({ user }: Props) {
   }, []);
 
   useEffect(() => {
-    if (router.query.step === "requests") setStep("MY_REQUESTS");
-  }, [router.query.step]);
-
-  useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       setError(null);
       try {
-        const [profilesList, requests, currentUser] = await Promise.all([
+        const [profilesList, currentUser] = await Promise.all([
           getAllTrainers(),
-          getTrainingRequests({ clientId: user.uid }),
           getCurrentUser(user.uid),
         ]);
         if (!cancelled) {
           setTrainers(profilesList.filter((tr) => tr.userId));
-          setMyRequests(requests);
           if (currentUser) {
             setClientName(
               [currentUser.lastName, currentUser.firstName].filter(Boolean).join(" ") || user.email || "Клиент"
@@ -137,7 +109,7 @@ export default function BookingPage({ user }: Props) {
             setClientName(user.email || "Клиент");
           }
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled) setError(toUserFacingMessage(e, language));
       } finally {
         if (!cancelled) setLoading(false);
@@ -146,14 +118,7 @@ export default function BookingPage({ user }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user.uid, user.email, t, language]);
-
-  useEffect(() => {
-    if (success) {
-      const id = setTimeout(() => setSuccess(null), 4000);
-      return () => clearTimeout(id);
-    }
-  }, [success]);
+  }, [user.uid, user.email, language]);
 
   async function handleSelectTrainer(trainer: Trainer) {
     setSelectedTrainer(trainer);
@@ -246,44 +211,39 @@ export default function BookingPage({ user }: Props) {
       const trainerFullName = [selectedTrainer.lastName, selectedTrainer.firstName]
         .filter(Boolean)
         .join(" ");
-      await createTrainingRequest({
+      const trainerUid = (selectedTrainer.userId ?? selectedTrainer.id).trim();
+
+      await bookIndividualSlot({
         clientId: user.uid,
         clientName,
-        trainerId: selectedTrainer.userId ?? selectedTrainer.id,
+        trainerId: trainerUid,
         trainerName: trainerFullName,
-        requestedDateTime: Timestamp.fromDate(targetDate),
+        dateTime: Timestamp.fromDate(targetDate),
         durationMinutes: duration,
-        status: "pending",
-        message: (message || "").trim() || "",
-        createdAt: Timestamp.now(),
+        availabilitySlotId: selectedSlot.id,
       });
 
-      const trainerUid = (selectedTrainer.userId ?? selectedTrainer.id).trim();
-      if (trainerUid) {
-        try {
-          const chatId = buildChatId(user.uid, trainerUid);
-          const whenStr = `${formatDateLabel(selectedSlot.date, locale)}, ${String(selectedHour).padStart(2, "0")}:00`;
-          const openMsg =
-            language === "en"
-              ? `Individual workout request with ${trainerFullName}. Time: ${whenStr}.`
-              : `Заявка на индивидуальную тренировку с ${trainerFullName}. Время: ${whenStr}.`;
-          const fullMsg = message.trim() ? `${openMsg}\n\n${message.trim()}` : openMsg;
-          await sendChatMessage(chatId, user.uid, clientName, fullMsg);
-        } catch {
-          /* заявка уже создана */
-        }
+      const chatId = buildChatId(user.uid, trainerUid);
+      const whenStr = `${formatDateLabel(selectedSlot.date, locale)}, ${String(selectedHour).padStart(2, "0")}:00`;
+      const openMsg =
+        language === "en"
+          ? `Individual workout booked with ${trainerFullName}. Time: ${whenStr}.`
+          : `Запись на индивидуальную тренировку с ${trainerFullName}. Время: ${whenStr}.`;
+      const fullMsg = message.trim() ? `${openMsg}\n\n${message.trim()}` : openMsg;
+      try {
+        await sendChatMessage(chatId, user.uid, clientName, fullMsg);
+      } catch {
+        /* тренировка уже создана */
       }
 
-      const updated = await getTrainingRequests({ clientId: user.uid });
-      setMyRequests(updated);
-
-      setSuccess(t("client.booking.success"));
-      setSelectedSlotId(null);
-      setSelectedHour(null);
-      setMessage("");
-      setStep("MY_REQUESTS");
-    } catch (e: any) {
-      setError(toUserFacingMessage(e, language));
+      await router.push(`/client/messages?chat=${encodeURIComponent(chatId)}`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "";
+      if (msg === "SLOT_TAKEN") {
+        setError(t("client.booking.slotTaken"));
+      } else {
+        setError(toUserFacingMessage(e, language));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -296,33 +256,16 @@ export default function BookingPage({ user }: Props) {
       setSelectedSlotId(null);
       setSelectedTrainer(null);
       setStep("SELECT_TRAINER");
-    } else if (step === "MY_REQUESTS") {
-      setStep("SELECT_TRAINER");
     }
   }
-
-  const STATUS_LABELS: Record<string, { text: string; cls: string }> = {
-    pending: { text: t("client.booking.statusPending"), cls: "bg-amber-100 text-amber-800" },
-    approved: { text: t("client.booking.statusApproved"), cls: "bg-emerald-100 text-emerald-800" },
-    rejected: { text: t("client.booking.statusRejected"), cls: "bg-red-100 text-red-700" },
-  };
 
   return (
     <ClientLayout title={t("client.booking.title")}>
       <div className="space-y-4">
         <Card className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-hsc-panel">
-              {t("client.booking.individualHeader")}
-            </h2>
-            <Button
-              size="sm"
-              variant={step === "MY_REQUESTS" ? "primary" : "ghost"}
-              onClick={() => setStep("MY_REQUESTS")}
-            >
-              {t("client.booking.myRequests")} ({myRequests.length})
-            </Button>
-          </div>
+          <h2 className="text-sm font-semibold text-hsc-panel">
+            {t("client.booking.individualHeader")}
+          </h2>
           <p className="text-xs text-slate-700">
             {t("client.booking.intro")}
           </p>
@@ -333,34 +276,27 @@ export default function BookingPage({ user }: Props) {
             {error}
           </div>
         )}
-        {success && (
-          <div className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
-            {success}
-          </div>
-        )}
 
-        {step !== "MY_REQUESTS" && (
-          <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500">
-            <span
-              className={step === "SELECT_TRAINER" ? "text-hsc-panel font-bold" : "cursor-pointer hover:text-hsc-panel"}
-              onClick={() => {
-                setSelectedTrainer(null);
-                setStep("SELECT_TRAINER");
-              }}
-            >
-              {t("client.booking.step1")}
-            </span>
-            <span>→</span>
-            <span
-              className={`${step === "VIEW_AVAILABILITY" ? "text-hsc-panel font-bold" : ""} ${selectedTrainer ? "cursor-pointer hover:text-hsc-panel" : ""}`}
-              onClick={() => { if (selectedTrainer) setStep("VIEW_AVAILABILITY"); }}
-            >
-              {t("client.booking.step2")}
-            </span>
-            <span>→</span>
-            <span className={step === "PICK_TIME" ? "text-hsc-panel font-bold" : ""}>{t("client.booking.step3")}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500">
+          <span
+            className={step === "SELECT_TRAINER" ? "text-hsc-panel font-bold" : "cursor-pointer hover:text-hsc-panel"}
+            onClick={() => {
+              setSelectedTrainer(null);
+              setStep("SELECT_TRAINER");
+            }}
+          >
+            {t("client.booking.step1")}
+          </span>
+          <span>→</span>
+          <span
+            className={`${step === "VIEW_AVAILABILITY" ? "text-hsc-panel font-bold" : ""} ${selectedTrainer ? "cursor-pointer hover:text-hsc-panel" : ""}`}
+            onClick={() => { if (selectedTrainer) setStep("VIEW_AVAILABILITY"); }}
+          >
+            {t("client.booking.step2")}
+          </span>
+          <span>→</span>
+          <span className={step === "PICK_TIME" ? "text-hsc-panel font-bold" : ""}>{t("client.booking.step3")}</span>
+        </div>
 
         {loading ? (
           <Card className="text-xs text-slate-700">{t("client.booking.loading")}</Card>
@@ -503,7 +439,7 @@ export default function BookingPage({ user }: Props) {
               </div>
             )}
           </Card>
-        ) : step === "PICK_TIME" ? (
+        ) : (
           <Card className="space-y-4">
             <div className="flex items-center gap-2">
               <button
@@ -582,65 +518,6 @@ export default function BookingPage({ user }: Props) {
                 {submitting ? t("client.booking.submitting") : t("client.booking.submit")}
               </Button>
             </div>
-          </Card>
-        ) : (
-          <Card className="space-y-3">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={goBack}
-                className="rounded-lg p-1 text-slate-500 hover:bg-emerald-50 hover:text-hsc-panel transition-colors"
-              >
-                ← {t("common.back")}
-              </button>
-              <h3 className="text-sm font-semibold text-hsc-panel">{t("client.booking.requestsHeader")}</h3>
-            </div>
-
-            {myRequests.length === 0 ? (
-              <p className="text-xs text-slate-700">
-                {t("client.booking.noRequests")}
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                {myRequests.map((req) => {
-                  const st = STATUS_LABELS[req.status] ?? STATUS_LABELS.pending;
-                  return (
-                    <div
-                      key={req.id}
-                      className="rounded-xl border border-emerald-900/15 bg-white px-3 py-2.5 text-xs"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-semibold text-hsc-panel">
-                          {req.trainerName}
-                        </div>
-                        <span
-                          className={`rounded-lg px-2 py-0.5 text-[10px] font-semibold ${st.cls}`}
-                        >
-                          {st.text}
-                        </span>
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-600">
-                        <span>{formatDateTime(req.requestedDateTime, locale)}</span>
-                        <span>{req.durationMinutes} {t("common.minutes")}</span>
-                      </div>
-                      {req.message && (
-                        <p className="mt-1 text-[11px] text-slate-500 italic">
-                          «{req.message}»
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <Button
-              size="sm"
-              variant="secondary"
-              fullWidth
-              onClick={() => setStep("SELECT_TRAINER")}
-            >
-              {t("client.booking.newRequest")}
-            </Button>
           </Card>
         )}
       </div>

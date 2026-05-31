@@ -82,7 +82,6 @@ export type TranslationKeys =
   | "client.training.individualHeader"
   | "client.training.individualIntro"
   | "client.training.bookTrainer"
-  | "client.training.myRequests"
   | "client.training.groupHeader"
   | "client.training.groupEmpty"
   | "client.training.signedUp"
@@ -99,7 +98,6 @@ export type TranslationKeys =
   | "client.booking.title"
   | "client.booking.individualHeader"
   | "client.booking.intro"
-  | "client.booking.myRequests"
   | "client.booking.step1"
   | "client.booking.step2"
   | "client.booking.step3"
@@ -125,13 +123,7 @@ export type TranslationKeys =
   | "client.booking.toSchedule"
   | "client.booking.submit"
   | "client.booking.submitting"
-  | "client.booking.success"
-  | "client.booking.requestsHeader"
-  | "client.booking.noRequests"
-  | "client.booking.newRequest"
-  | "client.booking.statusPending"
-  | "client.booking.statusApproved"
-  | "client.booking.statusRejected"
+  | "client.booking.slotTaken"
   | "client.booking.loadFailed"
   | "client.booking.loading"
   | "client.booking.slotPast"
@@ -165,6 +157,20 @@ export type TranslationKeys =
   | "client.messages.sending"
   | "client.messages.peer"
   | "client.messages.loadFailed"
+  | "client.messages.copy"
+  | "client.messages.edit"
+  | "client.messages.delete"
+  | "client.messages.deleteConfirm"
+  | "client.messages.save"
+  | "client.messages.cancel"
+  | "client.messages.edited"
+  | "client.messages.copied"
+  | "client.messages.editExpired"
+  | "client.messages.attachPhoto"
+  | "client.messages.removePhoto"
+  | "client.messages.photoFailed"
+  | "client.messages.photoPreview"
+  | "client.messages.openPhoto"
   // Дневник питания / БЖУ
   | "client.nutrition.title"
   | "client.nutrition.diaryTitle"
@@ -340,9 +346,8 @@ const ru: Dictionary = {
   "client.training.upcoming": "Ближайшие тренировки",
   "client.training.noUpcoming": "У вас пока нет запланированных тренировок. Запишитесь во вкладке «Запись».",
   "client.training.individualHeader": "Индивидуальная запись",
-  "client.training.individualIntro": "Выберите тренера, удобное время и отправьте заявку. После одобрения тренировка появится в «Мои».",
+  "client.training.individualIntro": "Выберите тренера и свободный час — запись подтверждается сразу, чат с тренером откроется автоматически.",
   "client.training.bookTrainer": "Записаться к тренеру",
-  "client.training.myRequests": "Мои заявки",
   "client.training.groupHeader": "Групповые тренировки (14 дней)",
   "client.training.groupEmpty": "Пока нет доступных групповых тренировок. Загляните позже.",
   "client.training.signedUp": "Вы записаны",
@@ -358,8 +363,7 @@ const ru: Dictionary = {
 
   "client.booking.title": "Запись на тренировку",
   "client.booking.individualHeader": "Индивидуальная тренировка",
-  "client.booking.intro": "Выберите тренера, удобное время и отправьте заявку на индивидуальную тренировку.",
-  "client.booking.myRequests": "Мои заявки",
+  "client.booking.intro": "Выберите тренера и свободный час — запись подтверждается сразу, чат с тренером откроется автоматически.",
   "client.booking.step1": "1. Тренер",
   "client.booking.step2": "2. Расписание",
   "client.booking.step3": "3. Запись",
@@ -383,15 +387,9 @@ const ru: Dictionary = {
   "client.booking.commentLabel": "Комментарий (необязательно):",
   "client.booking.commentPlaceholder": "Опишите ваши цели или пожелания...",
   "client.booking.toSchedule": "← К расписанию",
-  "client.booking.submit": "Отправить заявку",
-  "client.booking.submitting": "Отправка заявки...",
-  "client.booking.success": "Заявка на тренировку успешно отправлена!",
-  "client.booking.requestsHeader": "Мои заявки",
-  "client.booking.noRequests": "У вас пока нет заявок. Выберите тренера и удобное время, чтобы записаться.",
-  "client.booking.newRequest": "Новая заявка",
-  "client.booking.statusPending": "Ожидает",
-  "client.booking.statusApproved": "Одобрено",
-  "client.booking.statusRejected": "Отклонено",
+  "client.booking.submit": "Записаться",
+  "client.booking.submitting": "Запись...",
+  "client.booking.slotTaken": "Это время уже занято. Выберите другой слот.",
   "client.booking.loadFailed": "Не удалось загрузить данные",
   "client.booking.loading": "Загрузка данных...",
   "client.booking.slotPast": "Это время уже прошло. Выберите другой слот.",
@@ -425,6 +423,20 @@ const ru: Dictionary = {
   "client.messages.sending": "...",
   "client.messages.peer": "Собеседник",
   "client.messages.loadFailed": "Не удалось загрузить чаты",
+  "client.messages.copy": "Копировать",
+  "client.messages.edit": "Редактировать",
+  "client.messages.delete": "Удалить",
+  "client.messages.deleteConfirm": "Удалить это сообщение?",
+  "client.messages.save": "Сохранить",
+  "client.messages.cancel": "Отмена",
+  "client.messages.edited": "изм.",
+  "client.messages.copied": "Скопировано",
+  "client.messages.editExpired": "Редактирование недоступно (прошло 12 ч)",
+  "client.messages.attachPhoto": "Прикрепить фото",
+  "client.messages.removePhoto": "Убрать фото",
+  "client.messages.photoFailed": "Не удалось обработать фото",
+  "client.messages.photoPreview": "📷 Фото",
+  "client.messages.openPhoto": "Открыть фото",
 
   "client.nutrition.title": "Дневник питания",
   "client.nutrition.diaryTitle": "Дневник питания",
@@ -599,9 +611,8 @@ const en: Dictionary = {
   "client.training.upcoming": "Upcoming workouts",
   "client.training.noUpcoming": "You don't have any planned workouts yet. Sign up in the «Sign up» tab.",
   "client.training.individualHeader": "Individual booking",
-  "client.training.individualIntro": "Choose a trainer, a convenient time and submit a request. Once approved the session shows up in «Mine».",
+  "client.training.individualIntro": "Pick a trainer and a free hour — booking is confirmed instantly and a chat opens automatically.",
   "client.training.bookTrainer": "Book a trainer",
-  "client.training.myRequests": "My requests",
   "client.training.groupHeader": "Group workouts (14 days)",
   "client.training.groupEmpty": "No group workouts available right now. Check back later.",
   "client.training.signedUp": "You are signed up",
@@ -617,8 +628,7 @@ const en: Dictionary = {
 
   "client.booking.title": "Book a workout",
   "client.booking.individualHeader": "Individual workout",
-  "client.booking.intro": "Choose a trainer, pick a time, and submit a request for an individual workout.",
-  "client.booking.myRequests": "My requests",
+  "client.booking.intro": "Pick a trainer and a free hour — booking is confirmed instantly and a chat opens automatically.",
   "client.booking.step1": "1. Trainer",
   "client.booking.step2": "2. Schedule",
   "client.booking.step3": "3. Booking",
@@ -642,15 +652,9 @@ const en: Dictionary = {
   "client.booking.commentLabel": "Comment (optional):",
   "client.booking.commentPlaceholder": "Describe your goals or wishes...",
   "client.booking.toSchedule": "← Back to schedule",
-  "client.booking.submit": "Submit request",
-  "client.booking.submitting": "Submitting request...",
-  "client.booking.success": "Request submitted successfully!",
-  "client.booking.requestsHeader": "My requests",
-  "client.booking.noRequests": "You don't have any requests yet. Pick a trainer and a time to book.",
-  "client.booking.newRequest": "New request",
-  "client.booking.statusPending": "Pending",
-  "client.booking.statusApproved": "Approved",
-  "client.booking.statusRejected": "Rejected",
+  "client.booking.submit": "Book now",
+  "client.booking.submitting": "Booking...",
+  "client.booking.slotTaken": "This time slot is already taken. Please pick another one.",
   "client.booking.loadFailed": "Failed to load data",
   "client.booking.loading": "Loading data...",
   "client.booking.slotPast": "This time has already passed. Please pick another slot.",
@@ -684,6 +688,20 @@ const en: Dictionary = {
   "client.messages.sending": "...",
   "client.messages.peer": "Peer",
   "client.messages.loadFailed": "Failed to load chats",
+  "client.messages.copy": "Copy",
+  "client.messages.edit": "Edit",
+  "client.messages.delete": "Delete",
+  "client.messages.deleteConfirm": "Delete this message?",
+  "client.messages.save": "Save",
+  "client.messages.cancel": "Cancel",
+  "client.messages.edited": "edited",
+  "client.messages.copied": "Copied",
+  "client.messages.editExpired": "Editing unavailable (12 h passed)",
+  "client.messages.attachPhoto": "Attach photo",
+  "client.messages.removePhoto": "Remove photo",
+  "client.messages.photoFailed": "Could not process the photo",
+  "client.messages.photoPreview": "📷 Photo",
+  "client.messages.openPhoto": "Open photo",
 
   "client.nutrition.title": "Food diary",
   "client.nutrition.diaryTitle": "Food diary",

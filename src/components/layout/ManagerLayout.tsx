@@ -33,7 +33,7 @@ export function ManagerLayout({ title, children }: ManagerLayoutProps) {
 
   return (
     <BaseLayout title={title}>
-      <div className="flex flex-1 flex-col gap-4">
+      <div className="flex flex-col gap-4">
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-hsc-panel">Панель руководителя</h1>
@@ -50,7 +50,7 @@ export function ManagerLayout({ title, children }: ManagerLayoutProps) {
           </button>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 lg:flex-row">
+        <div className="flex flex-col gap-4 lg:flex-row">
           <aside className="w-full lg:w-64">
             <div className="rounded-2xl bg-[color:var(--hsc-surface)] p-2 shadow-sm">
               {navItems.map((item) => {
@@ -73,7 +73,7 @@ export function ManagerLayout({ title, children }: ManagerLayoutProps) {
               })}
             </div>
           </aside>
-          <main className="flex-1">{children}</main>
+          <main className="min-w-0 flex-1">{children}</main>
         </div>
       </div>
     </BaseLayout>
